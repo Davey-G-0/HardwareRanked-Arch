@@ -3388,8 +3388,17 @@ static void frontend_unix_get_env(int *argc,
             fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_THUMBNAILS],
                   parent_path, "thumbnails",
                   sizeof(g_defaults.dirs[DEFAULT_DIR_THUMBNAILS]));
+            /*
+             * HR Retro: playlists live in a stable, app-owned directory
+             * matching HRSetupActivity.getFilesDir()/playlists.
+             * The setup importer runs before the native activity starts;
+             * keeping this default independent from storage-permission
+             * heuristics makes a one-folder import reliable on Android 11+.
+             * An explicit playlist_directory value from retroarch.cfg
+             * remains authoritative for existing users.
+             */
             fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_PLAYLIST],
-                  parent_path, "playlists",
+                  app_dir, "files/playlists",
                   sizeof(g_defaults.dirs[DEFAULT_DIR_PLAYLIST]));
             fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CHEATS],
                   parent_path, "cheats",

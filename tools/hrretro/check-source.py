@@ -49,4 +49,31 @@ for path in (
         f"{path}: missing android:width"
     )
 assert "GNU GENERAL PUBLIC LICENSE" in read("COPYING")
+# One-folder setup contract: the launcher targets the guided Android screen,
+# while the existing native activity remains installed for emulation.
+setup_path = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRSetupActivity.java"
+import_path = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRGameLibraryImporter.java"
+class_path = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRGameLibraryClassifier.java"
+require(setup_path, "Intent.ACTION_OPEN_DOCUMENT_TREE")
+require(setup_path, "takePersistableUriPermission")
+require(setup_path, "new File(getFilesDir(), \"playlists\")")
+require(import_path, "HRGameLibraryClassifier.systemFor")
+require(import_path, "DocumentsContract.buildDocumentUriUsingTree")
+require(import_path, "File.createTempFile")
+require(class_path, "Needs Review")
+require("frontend/drivers/platform_unix.c", '"files/playlists"')
+require("pkg/android/phoenix-common/src/com/retroarch/browser/retroactivity/RetroActivityCommon.java",
+        'getPackageName().startsWith("com.hardwareranked.retro")')
+import xml.etree.ElementTree as ET
+tree = ET.parse(manifest_path)
+android_name = "{http://schemas.android.com/apk/res/android}name"
+android_target = "{http://schemas.android.com/apk/res/android}targetActivity"
+aliases = [e for e in tree.getroot().iter("activity-alias")
+           if e.get(android_name) == "com.retroarch.browser.mainmenu.MainMenuActivity"]
+assert len(aliases) == 1
+assert aliases[0].get(android_target) == (
+    "com.retroarch.browser.retroactivity.HRSetupActivity"
+)
+assert not any("MANAGE_EXTERNAL_STORAGE" in p.get(android_name, "")
+               for p in tree.getroot().iter("uses-permission"))
 print("HR Retro source and Android XML checks passed")

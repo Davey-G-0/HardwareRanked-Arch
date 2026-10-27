@@ -9,7 +9,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false"/>
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+    <!-- HR Retro uses SAF folder grants instead of broad All Files Access. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REORDER_TASKS" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -30,21 +30,22 @@
         android:requestLegacyExternalStorage="true"
         android:enableOnBackInvokedCallback="false"
         tools:ignore="UnusedAttribute">
+        <!-- Plain Android onboarding; the native emulator activity starts
+             only after the optional initial game folder import. -->
+        <activity android:name="com.retroarch.browser.retroactivity.HRSetupActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode" />
         <activity android:name="com.retroarch.browser.retroactivity.RetroActivityFuture" android:exported="true" android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" android:launchMode="singleInstance">
             <meta-data android:name="android.app.lib_name" android:value="retroarch-activity" />
             <meta-data android:name="android.app.func_name" android:value="ANativeActivity_onCreate" />
         </activity>
-        <!-- Launcher identity: same component name as the retired Java
-             launcher, so pinned shortcuts and launcher rows keep
-             resolving while starting the native activity directly. -->
+        <!-- Preserve the historic launcher alias. Android starts the
+             guided folder setup first; it forwards existing ROM/LIBRETRO
+             intents to the native activity without changing the core. -->
         <activity-alias android:name="com.retroarch.browser.mainmenu.MainMenuActivity"
-            android:targetActivity="com.retroarch.browser.retroactivity.RetroActivityFuture"
+            android:targetActivity="com.retroarch.browser.retroactivity.HRSetupActivity"
             android:exported="true">
-                <!-- NativeActivity resolves its library from the launched
-                     component's own meta-data; an alias does not inherit
-                     these from its target, so they are repeated here. -->
-                <meta-data android:name="android.app.lib_name" android:value="retroarch-activity" />
-                <meta-data android:name="android.app.func_name" android:value="ANativeActivity_onCreate" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

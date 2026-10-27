@@ -370,6 +370,21 @@ public class RetroActivityCommon extends NativeActivity
     boolean viaLauncher = getIntent() != null && getIntent().hasExtra("CONFIGFILE");
     boolean granted = hasStoragePermission();
 
+    /*
+     * HR Retro uses Android's read-only, persistable folder picker on its
+     * first-run setup screen. Broad All Files Access is not required and
+     * must not interrupt the single-folder onboarding flow.
+     *
+     * Native storage still starts when the permission gate is resolved;
+     * SAF access to the selected game folder is granted separately by
+     * Android's DocumentsUI, even when granted is false here.
+     */
+    if (getPackageName().startsWith("com.hardwareranked.retro"))
+    {
+      startupPermissionResolved(granted);
+      return;
+    }
+
     if (viaLauncher || isPlayStoreBuild() || granted)
     {
       startupPermissionResolved(granted);
