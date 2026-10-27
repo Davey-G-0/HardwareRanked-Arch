@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFD90F"
+          android:pathData="M0,0 L108,0 L108,108 L0,108 Z"/>
+    <path android:fillColor="#090B0E"
+          android:pathData="M7,7 L101,7 L101,101 L7,101 Z"/>
+    <!-- Monogram on a high contrast black surface. -->
+    <path android:fillColor="#FFD90F"
+          android:pathData="M15,28 L27,28 L27,48 L45,48 L45,28 L57,28 L57,80 L45,80 L45,60 L27,60 L27,80 L15,80 Z"/>
+    <path android:fillColor="#FFD90F"
+          android:pathData="M62,28 L85,28 L93,36 L93,50 L85,58 L82,58 L96,80 L81,80 L68,59 L74,59 L74,48 L81,48 L81,40 L74,40 L74,80 L62,80 Z"/>
+</vector>

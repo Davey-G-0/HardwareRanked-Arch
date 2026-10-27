@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#090B0E"
+          android:pathData="M0,0 L320,0 L320,180 L0,180 Z"/>
+    <path android:fillColor="#FFD90F"
+          android:pathData="M15,16 L305,16 L305,22 L15,22 Z"/>
+    <!-- Minimal HR monogram for Android TV. -->
+    <path android:fillColor="#FFD90F"
+          android:pathData="M24,58 L43,58 L43,77 L68,77 L68,58 L87,58 L87,117 L68,117 L68,96 L43,96 L43,117 L24,117 Z"/>
+    <path android:fillColor="#FFD90F"
+          android:pathData="M105,58 L148,58 L161,71 L161,88 L152,99 L171,117 L145,117 L126,97 L124,97 L124,117 L105,117 Z M124,75 L124,85 L141,85 L141,75 Z"/>
+    <path android:fillColor="#FFD90F"
+          android:pathData="M194,77 L295,77 L295,85 L194,85 Z M194,96 L271,96 L271,104 L194,104 Z"/>
+    <path android:fillColor="#FFD90F"
+          android:pathData="M15,155 L305,155 L305,162 L15,162 Z"/>
+</vector>

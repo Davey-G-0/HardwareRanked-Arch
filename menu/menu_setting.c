@@ -5587,6 +5587,8 @@ static size_t setting_get_string_representation_uint_materialui_menu_color_theme
             return strlcpy(s,
                   msg_hash_to_str(
                      MENU_ENUM_LABEL_VALUE_MATERIALUI_MENU_COLOR_THEME_DRACULA), len);
+         case MATERIALUI_THEME_HARDWARE_RANKED:
+            return strlcpy(s, "Hardware Ranked", len);
          default:
             break;
       }
@@ -5802,6 +5804,8 @@ static size_t setting_get_string_representation_ozone_menu_color_theme(
    if (setting)
    {
       size_t i = ozone_color_theme_index(setting->value.target.string);
+      if (string_is_equal(setting->value.target.string, "hardware_ranked"))
+         return strlcpy(s, "Hardware Ranked", len);
       /* Unknown values render as the default theme: show that */
       if (i >= ARRAY_SIZE(ozone_color_theme_options))
          i = ozone_color_theme_index(DEFAULT_OZONE_COLOR_THEME);

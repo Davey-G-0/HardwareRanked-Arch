@@ -3462,7 +3462,7 @@ static void frontend_unix_get_env(int *argc,
 #ifdef HAVE_MENU
 #ifdef HAVE_MATERIALUI
       g_defaults.menu_materialui_menu_color_theme_enable = true;
-      g_defaults.menu_materialui_menu_color_theme        = MATERIALUI_THEME_NVIDIA_SHIELD;
+      g_defaults.menu_materialui_menu_color_theme        = MATERIALUI_THEME_HARDWARE_RANKED;
 #endif
 #endif
    }

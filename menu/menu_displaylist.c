@@ -4771,6 +4771,7 @@ static int menu_displaylist_parse_load_content_settings(
                MENU_SETTING_ACTION_RUN, 0, 0, NULL))
             count++;
 
+#ifndef ANDROID
       /* Note: Entry type depends on whether quick menu
        * was accessed via a playlist ('horizontal content')
        * or the main menu
@@ -4788,6 +4789,7 @@ static int menu_displaylist_parse_load_content_settings(
                      MENU_SETTING_ACTION_CLOSE,
                0, 0, NULL))
             count++;
+#endif /* !ANDROID */
 
       if (     savestates_enabled
             && settings->bools.quick_menu_show_savestate_submenu)
@@ -5134,6 +5136,24 @@ static int menu_displaylist_parse_load_content_settings(
                MENU_SETTING_ACTION, 0, 0, NULL))
             count++;
       }
+#endif
+#ifdef ANDROID
+      /*
+       * HR Retro Android: put the destructive close action at the END
+       * of the in-game menu, away from Resume and Save/Load.
+       *
+       * Preserve horizontal vs. main-menu action type; the latter
+       * flushes the navigation stack when the game is closed.
+       */
+      if (settings->bools.quick_menu_show_close_content)
+         if (menu_entries_append(list,
+               "Exit Game",
+               MENU_ENUM_LABEL_CLOSE_CONTENT_STR,
+               MENU_ENUM_LABEL_CLOSE_CONTENT,
+               horizontal ? MENU_SETTING_ACTION_CLOSE_HORIZONTAL :
+                     MENU_SETTING_ACTION_CLOSE,
+               0, 0, NULL))
+            count++;
 #endif
    }
 

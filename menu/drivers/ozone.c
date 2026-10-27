@@ -1232,6 +1232,47 @@ static ozone_theme_t ozone_theme_light = {
    "light"                                               /* name */
 };
 
+/* HR Retro: native Ozone palette, keeps upstream dark Ozone textures. */
+static const float hr_retro_sidebar[16] =
+      COLOR_HEX_TO_FLOAT(0x11161A, 1.0f);
+static const float hr_retro_running[16] =
+      COLOR_HEX_TO_FLOAT(0x090B0E, 0.94f);
+static const float hr_retro_border_0[16] =
+      COLOR_HEX_TO_FLOAT(0xFFD90F, 1.0f);
+static const float hr_retro_border_1[16] =
+      COLOR_HEX_TO_FLOAT(0xFFEA80, 1.0f);
+
+static ozone_theme_t ozone_theme_hardware_ranked = {
+   COLOR_HEX_TO_FLOAT(0x090B0E, 1.0f), /* background */
+   hr_retro_running,                 /* background while core runs */
+
+   COLOR_HEX_TO_FLOAT(0x363D43, 1.0f), /* header/footer separator */
+   COLOR_HEX_TO_FLOAT(0xF5F6F7, 1.0f), /* text */
+   COLOR_HEX_TO_FLOAT(0x24292E, 1.0f), /* selected row */
+   COLOR_HEX_TO_FLOAT(0xFFD90F, 1.0f), /* selected row border */
+   COLOR_HEX_TO_FLOAT(0x363D43, 1.0f), /* entries border */
+   COLOR_HEX_TO_FLOAT(0xFFD90F, 1.0f), /* entries icon */
+   COLOR_HEX_TO_FLOAT(0xFFD90F, 1.0f), /* selected text */
+   COLOR_HEX_TO_FLOAT(0x1B2025, 1.0f), /* message background */
+
+   0xF5F6F7FF, /* main text */
+   0xF5F6F7FF, /* sidebar text */
+   0xFFD90FFF, /* selected text */
+   0xAFB9C3FF, /* sublabels */
+
+   0xFFD90F, /* screensaver */
+
+   hr_retro_sidebar,
+   hr_retro_sidebar,
+   hr_retro_sidebar,
+
+   hr_retro_border_0,
+   hr_retro_border_1,
+
+   {0}, /* textures */
+   "dark" /* reuse stock Ozone dark texture assets */
+};
+
 static ozone_theme_t ozone_theme_dark = {
    COLOR_HEX_TO_FLOAT(0x2D2D2D, 1.00f),                  /* background */
    ozone_background_libretro_running_dark,               /* background_libretro_running */
