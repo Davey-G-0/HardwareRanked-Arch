@@ -26,6 +26,8 @@ require("menu/drivers/ozone_color_themes.h", 'X("hardware_ranked",')
 require("menu/drivers/ozone.c", "ozone_theme_hardware_ranked")
 require("menu/menu_setting.c", 'strlcpy(s, "Hardware Ranked", len)')
 require("menu/menu_displaylist.c", '"Exit Game"')
+require("frontend/drivers/platform_unix.c", "hr_retro_is_android_handheld_model(name)")
+require("frontend/drivers/hr_retro_android_device.h", '"Retroid"')
 android_default("DEFAULT_OZONE_COLOR_THEME", '"hardware_ranked"', '"basic_black"')
 android_default("DEFAULT_MATERIALUI_THEME",
                 "MATERIALUI_THEME_HARDWARE_RANKED", "MATERIALUI_THEME_OZONE_DARK")

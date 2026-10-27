@@ -54,6 +54,7 @@
 #include <sys/system_properties.h>
 #include <lists/string_list.h>
 #include "../../audio/common/android_audio.h"
+#include "hr_retro_android_device.h"
 #ifdef HAVE_AAUDIO
 #include "../../audio/audio_driver.h"
 #endif
@@ -1402,11 +1403,16 @@ static bool device_is_xperia_play(const char *name)
    return false;
 }
 
-/* TODO/FIXME - unfinished */
+/* HR Retro: include contemporary handheld models in the controller-first
+ * Ozone initial-menu decision, preserving upstream detection for older units. */
 static bool device_is_game_console(const char *name)
 {
+   if (!name)
+      return false;
+
    if (
-            device_is_xperia_play(name)
+            hr_retro_is_android_handheld_model(name)
+         || device_is_xperia_play(name)
          || strstr(name, "OUYA Console")
          || strstr(name, "GAMEMID_BT")
          || strstr(name, "S7800")

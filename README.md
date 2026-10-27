@@ -1,3 +1,19 @@
+# HR Retro — Hardware Ranked Android Edition
+
+> **Early developer preview.** HR Retro is an independent, community-facing Android fork of [RetroArch](https://github.com/libretro/RetroArch), with a goal of making powerful emulation easier to use on Android handhelds. It is **not** an official Libretro product. The existing HardwareRanked website repositories are separate and untouched.
+
+**Current stage:** An ARM64 debug APK compiles through [HR Retro Android Actions](https://github.com/Davey-G-0/HardwareRanked-Arch/actions/workflows/HR-Retro-Android.yml). The interface currently uses a Hardware Ranked yellow/black native palette, simplified Android menus, direct Save/Load, and a safer Exit position. The planned six-action card/grid interface and first-run wizard **are not finished**.
+
+- **Source development:** [Draft PR #1](https://github.com/Davey-G-0/HardwareRanked-Arch/pull/1)
+- **Engineering roadmap:** [Android completion plan](docs/hr-retro/ROADMAP.md)
+- **Sideload and test:** [Android test checklist](docs/hr-retro/ANDROID_TEST_PLAN.md)
+- **Licensing:** RetroArch is GPLv3; bundled/optional libretro cores each require their own license review.
+- **Safety:** Keep personal game saves backed up, do not install on a critical setup yet, and do not distribute ROMs or BIOS with this app.
+
+This fork preserves the upstream RetroArch source and attribution below. The HR Retro changes are in the Android development branch until QA and licensing checks pass.
+
+---
+
 [![Crowdin](https://badges.crowdin.net/retroarch/localized.svg)](https://crowdin.com/project/retroarch)
 
 # RetroArch
