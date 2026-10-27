@@ -31,6 +31,7 @@
 #define OZONE_COLOR_THEME_LIST(X) \
    X("basic_white",        ozone_theme_light,              MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_BASIC_WHITE) \
    X("basic_black",        ozone_theme_dark,               MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_BASIC_BLACK) \
+   X("hardware_ranked",    ozone_theme_hardware_ranked,    MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_BASIC_BLACK) \
    X("nord",               ozone_theme_nord,               MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_NORD) \
    X("gruvbox_dark",       ozone_theme_gruvbox_dark,       MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_GRUVBOX_DARK) \
    X("boysenberry",        ozone_theme_boysenberry,        MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_BOYSENBERRY) \

@@ -54,6 +54,7 @@
 #include <sys/system_properties.h>
 #include <lists/string_list.h>
 #include "../../audio/common/android_audio.h"
+#include "hr_retro_android_device.h"
 #ifdef HAVE_AAUDIO
 #include "../../audio/audio_driver.h"
 #endif
@@ -1402,11 +1403,16 @@ static bool device_is_xperia_play(const char *name)
    return false;
 }
 
-/* TODO/FIXME - unfinished */
+/* HR Retro: include contemporary handheld models in the controller-first
+ * Ozone initial-menu decision, preserving upstream detection for older units. */
 static bool device_is_game_console(const char *name)
 {
+   if (!name)
+      return false;
+
    if (
-            device_is_xperia_play(name)
+            hr_retro_is_android_handheld_model(name)
+         || device_is_xperia_play(name)
          || strstr(name, "OUYA Console")
          || strstr(name, "GAMEMID_BT")
          || strstr(name, "S7800")
@@ -3462,7 +3468,7 @@ static void frontend_unix_get_env(int *argc,
 #ifdef HAVE_MENU
 #ifdef HAVE_MATERIALUI
       g_defaults.menu_materialui_menu_color_theme_enable = true;
-      g_defaults.menu_materialui_menu_color_theme        = MATERIALUI_THEME_NVIDIA_SHIELD;
+      g_defaults.menu_materialui_menu_color_theme        = MATERIALUI_THEME_HARDWARE_RANKED;
 #endif
 #endif
    }
@@ -3482,6 +3488,7 @@ static void frontend_unix_get_env(int *argc,
       g_defaults.overlay_set    = true;
       g_defaults.overlay_enable = false;
       strlcpy_lit(g_defaults.settings_menu, "ozone", sizeof(g_defaults.settings_menu));
+      /* HR Retro: retain the controller-first Ozone interface on Android handhelds. */
    }
 #else
    char base_path[PATH_MAX] = {0};

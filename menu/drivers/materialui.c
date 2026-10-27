@@ -1961,6 +1961,54 @@ static const materialui_theme_t *materialui_get_theme(enum materialui_color_them
       0.95f     /* screen_fade_opacity */
    };
 
+   /* HR Retro: Hardware Ranked high contrast black/yellow palette. */
+   static const materialui_theme_t materialui_theme_hardware_ranked = {
+      /* Text */
+      0xABB3BC, /* on_sys_bar */
+      0x090B0E, /* on_header */
+      0xF5F6F7, /* list_text */
+      0x090B0E, /* list_text_highlighted */
+      0xB9C0C7, /* list_hint_text */
+      0x292C30, /* list_hint_text_highlighted */
+      0xB9C0C7, /* status_bar_text */
+      /* Backgrounds */
+      0x090B0E, /* sys_bar_background */
+      0xFFD90F, /* title_bar_background */
+      0x0E1115, /* list_background */
+      0xFFD90F, /* list_highlighted_background */
+      0x12171B, /* nav_bar_background */
+      0x1B2025, /* surface_background */
+      0x090B0E, /* thumbnail_background */
+      0x12171B, /* side_bar_background */
+      0x090B0E, /* status_bar_background */
+      /* List icons and switches */
+      0xFFD90F, /* list_icon */
+      0xFFD90F, /* list_switch_on */
+      0x46400B, /* list_switch_on_background */
+      0x89919A, /* list_switch_off */
+      0x343B42, /* list_switch_off_background */
+      /* Navigation */
+      0xFFD90F, /* nav_bar_icon_active */
+      0xB9C0C7, /* nav_bar_icon_passive */
+      0x555C63, /* nav_bar_icon_disabled */
+      /* Screensaver */
+      0xFFD90F, /* screensaver_tint */
+      /* Miscellaneous */
+      0x000000, /* header_shadow */
+      0x000000, /* landscape_border_shadow */
+      0x000000, /* status_bar_shadow */
+      0xFFD90F, /* selection_marker_shadow */
+      0xFFD90F, /* scrollbar */
+      0x353A40, /* divider */
+      0x000000, /* screen_fade */
+      0xFFD90F, /* missing_thumbnail_icon */
+      0.12f,    /* header_shadow_opacity */
+      0.15f,    /* landscape_border_shadow_opacity */
+      0.85f,    /* status_bar_shadow_opacity */
+      0.14f,    /* selection_marker_shadow_opacity */
+      0.90f     /* screen_fade_opacity */
+   };
+
    switch (color_theme)
    {
       case MATERIALUI_THEME_BLUE:
@@ -2013,6 +2061,8 @@ static const materialui_theme_t *materialui_get_theme(enum materialui_color_them
          return &materialui_theme_gray_light;
       case MATERIALUI_THEME_DRACULA:
          return &materialui_theme_dracula;
+      case MATERIALUI_THEME_HARDWARE_RANKED:
+         return &materialui_theme_hardware_ranked;
       default:
          break;
    }
