@@ -10,6 +10,7 @@ package com.retroarch.browser.retroactivity;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
@@ -70,8 +71,12 @@ public final class HRSetupActivity extends Activity {
         boolean manage = incoming != null && incoming.getBooleanExtra(MANAGE, false);
         boolean incomingGame = incoming != null &&
                 (incoming.hasExtra("ROM") || incoming.hasExtra("LIBRETRO"));
-        if ((!manage && prefs.getBoolean(FINISHED, false)) || incomingGame) {
+        if (incomingGame) {
             openRetroArch();
+            return;
+        }
+        if (!manage && prefs.getBoolean(FINISHED, false)) {
+            openLibrary();
             return;
         }
         drawSetup();
@@ -165,7 +170,7 @@ public final class HRSetupActivity extends Activity {
         root.addView(launchButton, new LinearLayout.LayoutParams(-1, dp(62)));
         launchButton.setVisibility(View.GONE);
         launchButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { openRetroArch(); }
+            @Override public void onClick(View v) { openLibrary(); }
         });
         addSpace(root, 16);
 
@@ -185,7 +190,7 @@ public final class HRSetupActivity extends Activity {
                     return;
                 }
                 prefs.edit().putBoolean(FINISHED, true).apply();
-                openRetroArch();
+                openLibrary();
             }
         });
         addSpace(root, 16);
@@ -256,11 +261,11 @@ public final class HRSetupActivity extends Activity {
      * for brand-new HR Retro installs. We must not silently discard an
      * existing player's custom playlist path.
      */
-    private File playlistDirectory() throws IOException {
-        File external = getExternalFilesDir(null);
+    static File playlistDirectory(Context context) throws IOException {
+        File external = context.getExternalFilesDir(null);
         File[] configCandidates = {
             external == null ? null : new File(external, "retroarch.cfg"),
-            new File(getFilesDir(), "retroarch.cfg")
+            new File(context.getFilesDir(), "retroarch.cfg")
         };
         for (File config : configCandidates) {
             if (config == null || !config.isFile())
@@ -294,7 +299,7 @@ public final class HRSetupActivity extends Activity {
             // Native startup prefers the first existing config; do likewise.
             break;
         }
-        File fallback = new File(getFilesDir(), "playlists");
+        File fallback = new File(context.getFilesDir(), "playlists");
         if (!fallback.isDirectory() && !fallback.mkdirs())
             throw new IOException("Couldn't create the HR Retro library directory.");
         return fallback;
@@ -316,7 +321,7 @@ public final class HRSetupActivity extends Activity {
                         HRGameLibraryImporter.importFolder(
                             getContentResolver(),
                             uri,
-                            playlistDirectory(),
+                            playlistDirectory(HRSetupActivity.this),
                             cancel,
                             new HRGameLibraryImporter.Progress() {
                                 @Override
@@ -372,6 +377,12 @@ public final class HRSetupActivity extends Activity {
         chooseButton.setEnabled(true);
         chooseButton.setAlpha(1.0f);
         skipButton.setText("Skip Setup");
+    }
+
+    private void openLibrary() {
+        Intent intent = new Intent(this, HRLibraryActivity.class);
+        startActivity(intent);
+        finish();
     }
 
     private void openRetroArch() {

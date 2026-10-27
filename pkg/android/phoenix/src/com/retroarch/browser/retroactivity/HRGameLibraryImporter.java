@@ -98,7 +98,54 @@ final class HRGameLibraryImporter {
 
     private static String labelFor(String filename) {
         int dot = filename.lastIndexOf('.');
-        return dot > 0 ? filename.substring(0, dot) : filename;
+        String label = dot > 0 ? filename.substring(0, dot) : filename;
+        return label.replace('_', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    // When a folder contains both an original CUE and a CHD conversion of
+    // the same game, keep one entry. An M3U takes precedence when present,
+    // because it may describe all of a game's discs. Do not combine
+    // distinct Disc 1/Disc 2 titles unless a master M3U is present.
+    private static int preference(String filename) {
+        String lower = filename.toLowerCase(Locale.US);
+        if (lower.endsWith(".m3u")) return 100;
+        if (lower.endsWith(".chd")) return 95;
+        if (lower.endsWith(".pbp")) return 90;
+        if (lower.endsWith(".gdi")) return 85;
+        if (lower.endsWith(".cue")) return 80;
+        if (lower.endsWith(".cdi")) return 75;
+        if (lower.endsWith(".iso")) return 70;
+        if (lower.endsWith(".zip")) return 65;
+        if (lower.endsWith(".7z")) return 60;
+        return 50;
+    }
+
+    private static int deduplicate(LinkedHashMap<String, ArrayList<Game>> groups) {
+        int total = 0;
+        for (Map.Entry<String, ArrayList<Game>> group : groups.entrySet()) {
+            LinkedHashMap<String, Game> unique = new LinkedHashMap<>();
+            Set<String> masterPlaylists = new HashSet<>();
+            for (Game game : group.getValue())
+                if (game.name.toLowerCase(Locale.US).endsWith(".m3u"))
+                    masterPlaylists.add(labelFor(game.name).toLowerCase(Locale.US));
+            for (Game game : group.getValue()) {
+                String key = labelFor(game.name).toLowerCase(Locale.US);
+                // Prefer a master multi-disc M3U to individual discs
+                // with otherwise matching titles, when available.
+                String base = key.replaceAll(
+                    "(?i)\\s*\\((disc|disk|cd)\\s*[0-9]+(?:\\s*of\\s*[0-9]+)?\\)\\s*$", "");
+                if (!key.equals(base) && masterPlaylists.contains(base))
+                    continue;
+                Game previous = unique.get(key);
+                if (previous == null ||
+                        preference(game.name) > preference(previous.name))
+                    unique.put(key, game);
+            }
+            ArrayList<Game> deduplicated = new ArrayList<>(unique.values());
+            group.setValue(deduplicated);
+            total += deduplicated.size();
+        }
+        return total;
     }
 
     /**
@@ -187,6 +234,9 @@ final class HRGameLibraryImporter {
         }
         if (cancelled.get())
             throw new InterruptedException("Library scan cancelled.");
+
+        // Deduplicate alternative formats without changing the user's files.
+        games = deduplicate(groups);
 
         // Do not modify game files; write only app-owned playlists.
         // Files with ambiguous extensions are grouped under Needs Review.
