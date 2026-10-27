@@ -56,7 +56,7 @@ import_path = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRGam
 class_path = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRGameLibraryClassifier.java"
 require(setup_path, "Intent.ACTION_OPEN_DOCUMENT_TREE")
 require(setup_path, "takePersistableUriPermission")
-require(setup_path, "new File(getFilesDir(), \"playlists\")")
+require(setup_path, "new File(context.getFilesDir(), \"playlists\")")
 require(import_path, "HRGameLibraryClassifier.systemFor")
 require(import_path, "DocumentsContract.buildDocumentUriUsingTree")
 require(import_path, "File.createTempFile")
@@ -76,4 +76,22 @@ assert aliases[0].get(android_target) == (
 )
 assert not any("MANAGE_EXTERNAL_STORAGE" in p.get(android_name, "")
                for p in tree.getroot().iter("uses-permission"))
+# HR Retro always opens the game library after initial scan,
+# and invokes native emulation only on Play or Advanced.
+require(setup_path, "new Intent(this, HRLibraryActivity.class)")
+library = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRLibraryActivity.java"
+catalog = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRCoreCatalog.java"
+installer = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRCoreInstaller.java"
+binder = "pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRCorePlaylistBinder.java"
+require(library, 'intent.putExtra("ROM", game)')
+require(library, 'intent.putExtra("LIBRETRO", corePath)')
+require(library, "offerMissingCores()")
+require(catalog, 'core("Sony - PlayStation", "pcsx_rearmed"')
+require(installer, "https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/")
+require(installer, "https://buildbot.libretro.com/assets/frontend/info.zip")
+require(binder, 'name.startsWith("HR - ")')
+require(import_path, "games = deduplicate(groups);")
+assert any(e.get(android_name) ==
+           "com.retroarch.browser.retroactivity.HRLibraryActivity"
+           for e in tree.getroot().iter("activity"))
 print("HR Retro source and Android XML checks passed")
