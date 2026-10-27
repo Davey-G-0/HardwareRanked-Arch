@@ -1,0 +1,75 @@
+name: HR Retro Android APK
+
+on:
+  push:
+    branches: [feature/hardware-ranked-android-v0]
+    paths:
+      - 'config.def.h'
+      - 'frontend/**'
+      - 'menu/**'
+      - 'pkg/android/**'
+      - 'tools/hrretro/**'
+      - '.github/workflows/HR-Retro-Android.yml'
+  pull_request:
+    paths:
+      - 'config.def.h'
+      - 'frontend/**'
+      - 'menu/**'
+      - 'pkg/android/**'
+      - 'tools/hrretro/**'
+      - '.github/workflows/HR-Retro-Android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hr-retro-android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-arm64:
+    name: Validate and build HR Retro (ARM64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate HR Retro source configuration
+        run: python3 tools/hrretro/check-source.py
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Install Android SDK / NDK
+        shell: bash
+        run: |
+          set -eu
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'platforms;android-36' 'build-tools;36.0.0' 'ndk;29.0.14206865'
+      - name: Build HR Retro ARM64 debug APK
+        working-directory: pkg/android/phoenix
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleAarch64Debug --stacktrace
+      - name: Verify APK and package name
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=pkg/android/phoenix/build/outputs/apk/aarch64/debug/phoenix-aarch64-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/hrretro-package.txt"
+          grep -q "package: name='com.hardwareranked.retro.aarch64'" "$RUNNER_TEMP/hrretro-package.txt"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libretroarch-activity.so'
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$APK"
+      - name: Publish debug APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HR-Retro-Android-ARM64-${{ github.sha }}
+          path: pkg/android/phoenix/build/outputs/apk/aarch64/debug/phoenix-aarch64-debug.apk
+          if-no-files-found: error
+          retention-days: 14
