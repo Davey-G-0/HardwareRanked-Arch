@@ -891,30 +891,74 @@
 #define DEFAULT_OZONE_SORT_AFTER_TRUNCATE_PLAYLIST_NAME false
 #endif
 
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_DRIVERS false
+#else
 #define DEFAULT_SETTINGS_SHOW_DRIVERS true
+#endif
 #define DEFAULT_SETTINGS_SHOW_VIDEO true
 #define DEFAULT_SETTINGS_SHOW_AUDIO true
 #define DEFAULT_SETTINGS_SHOW_INPUT true
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_LATENCY false
+#else
 #define DEFAULT_SETTINGS_SHOW_LATENCY true
+#endif
 #define DEFAULT_SETTINGS_SHOW_CORE true
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_CONFIGURATION false
+#else
 #define DEFAULT_SETTINGS_SHOW_CONFIGURATION true
+#endif
 #define DEFAULT_SETTINGS_SHOW_SAVING true
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_LOGGING false
+#else
 #define DEFAULT_SETTINGS_SHOW_LOGGING true
+#endif
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_FILE_BROWSER false
+#else
 #define DEFAULT_SETTINGS_SHOW_FILE_BROWSER true
+#endif
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_FRAME_THROTTLE false
+#else
 #define DEFAULT_SETTINGS_SHOW_FRAME_THROTTLE true
+#endif
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_RECORDING false
+#else
 #define DEFAULT_SETTINGS_SHOW_RECORDING true
+#endif
 #define DEFAULT_SETTINGS_SHOW_ONSCREEN_DISPLAY true
 #define DEFAULT_SETTINGS_SHOW_USER_INTERFACE true
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_AI_SERVICE false
+#else
 #define DEFAULT_SETTINGS_SHOW_AI_SERVICE true
+#endif
 #define DEFAULT_SETTINGS_SHOW_ACCESSIBILITY true
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_POWER_MANAGEMENT false
+#else
 #define DEFAULT_SETTINGS_SHOW_POWER_MANAGEMENT true
+#endif
 #define DEFAULT_SETTINGS_SHOW_ACHIEVEMENTS true
 #define DEFAULT_SETTINGS_SHOW_NETWORK true
 #define DEFAULT_SETTINGS_SHOW_PLAYLISTS true
 #define DEFAULT_SETTINGS_SHOW_USER true
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_DIRECTORY false
+#else
 #define DEFAULT_SETTINGS_SHOW_DIRECTORY true
+#endif
 #define DEFAULT_SETTINGS_SHOW_STEAM true
+#ifdef ANDROID
+#define DEFAULT_SETTINGS_SHOW_SMB_CLIENT false
+#else
 #define DEFAULT_SETTINGS_SHOW_SMB_CLIENT true
+#endif
 
 #define DEFAULT_QUICK_MENU_SHOW_RESUME_CONTENT true
 #ifdef ANDROID
@@ -1025,8 +1069,16 @@
 #define DEFAULT_MENU_SHOW_EJECT_DISC true
 #endif /* HAVE_LAKKA */
 #endif
+#ifdef ANDROID
+#define DEFAULT_MENU_SHOW_INFORMATION false
+#else
 #define DEFAULT_MENU_SHOW_INFORMATION true
+#endif
+#ifdef ANDROID
+#define DEFAULT_MENU_SHOW_CONFIGURATIONS false
+#else
 #define DEFAULT_MENU_SHOW_CONFIGURATIONS true
+#endif
 #if defined(ANDROID)
 /* Android's navigation model expects the user to leave via Home or the
  * task switcher rather than an in-app control, and the Android TV
@@ -1039,7 +1091,11 @@
 #else
 #define DEFAULT_MENU_SHOW_QUIT true
 #endif
+#ifdef ANDROID
+#define DEFAULT_MENU_SHOW_RESTART false
+#else
 #define DEFAULT_MENU_SHOW_RESTART true
+#endif
 #define DEFAULT_MENU_SHOW_REBOOT true
 #define DEFAULT_MENU_SHOW_SHUTDOWN true
 #ifdef HAVE_MIST

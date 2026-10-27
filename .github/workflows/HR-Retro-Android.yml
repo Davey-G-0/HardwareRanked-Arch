@@ -2,7 +2,7 @@ name: HR Retro Android APK
 
 on:
   push:
-    branches: [feature/hardware-ranked-android-v0]
+    branches: [feature/hardware-ranked-android-v0, feature/hr-retro-one-folder-setup]
     paths:
       - 'config.def.h'
       - 'frontend/**'
@@ -48,6 +48,15 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: gradle
+      - name: Test automatic console sorting (pure Java)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hrretro-classifier"
+          javac -d "$RUNNER_TEMP/hrretro-classifier" \
+            pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRGameLibraryClassifier.java \
+            tools/hrretro/HRClassifierTest.java
+          java -cp "$RUNNER_TEMP/hrretro-classifier" com.retroarch.browser.retroactivity.HRClassifierTest
       - name: Install Android SDK / NDK
         shell: bash
         run: |
