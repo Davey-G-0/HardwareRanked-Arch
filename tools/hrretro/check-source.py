@@ -65,7 +65,7 @@ require("frontend/drivers/platform_unix.c", '"files/playlists"')
 require("pkg/android/phoenix-common/src/com/retroarch/browser/retroactivity/RetroActivityCommon.java",
         'getPackageName().startsWith("com.hardwareranked.retro")')
 import xml.etree.ElementTree as ET
-tree = ET.parse(manifest_path)
+tree = ET.parse(ROOT / "pkg/android/phoenix/AndroidManifest.xml")
 android_name = "{http://schemas.android.com/apk/res/android}name"
 android_target = "{http://schemas.android.com/apk/res/android}targetActivity"
 aliases = [e for e in tree.getroot().iter("activity-alias")
