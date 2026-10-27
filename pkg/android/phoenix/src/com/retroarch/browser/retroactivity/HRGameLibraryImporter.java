@@ -256,7 +256,7 @@ final class HRGameLibraryImporter {
         }
         if (progress != null)
             progress.onProgress(visited, games);
-        Log.i(TAG, "Imported  + games + " games into " + groups.size() + " HR playlists");
+        Log.i(TAG, "Imported " + games + " games into " + groups.size() + " HR playlists");
         return new Result(visited, games, ambiguous,
                 groups.size() - (ambiguous > 0 ? 1 : 0), limited);
     }
