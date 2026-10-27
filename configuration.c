@@ -5966,6 +5966,11 @@ void config_set_defaults(settings_t *target)
       free(uint_settings);
    }
 
+#if defined(ANDROID) && defined(HAVE_MENU)
+   /* HR Retro handhelds: open the Quick Menu with both stick clicks. */
+   settings->uints.input_menu_toggle_gamepad_combo = INPUT_COMBO_L3_R3;
+#endif
+
    if (size_settings && (size_settings_size > 0))
    {
       for (i = 0; i < (unsigned)size_settings_size; i++)
