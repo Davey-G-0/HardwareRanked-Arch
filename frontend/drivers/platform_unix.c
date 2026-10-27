@@ -3482,6 +3482,7 @@ static void frontend_unix_get_env(int *argc,
       g_defaults.overlay_set    = true;
       g_defaults.overlay_enable = false;
       strlcpy_lit(g_defaults.settings_menu, "ozone", sizeof(g_defaults.settings_menu));
+      /* HR Retro: retain the controller-first Ozone interface on Android handhelds. */
    }
 #else
    char base_path[PATH_MAX] = {0};
