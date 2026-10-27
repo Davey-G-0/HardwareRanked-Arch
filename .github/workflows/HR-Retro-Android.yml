@@ -2,9 +2,10 @@ name: HR Retro Android APK
 
 on:
   push:
-    branches: [feature/hardware-ranked-android-v0, feature/hr-retro-one-folder-setup, feature/hr-retro-core-library]
+    branches: [feature/hardware-ranked-android-v0, feature/hr-retro-one-folder-setup, feature/hr-retro-core-library, feature/hr-retro-system-setup-hotkeys]
     paths:
       - 'config.def.h'
+      - 'configuration.c'
       - 'frontend/**'
       - 'menu/**'
       - 'pkg/android/**'
