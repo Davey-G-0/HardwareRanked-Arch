@@ -260,6 +260,16 @@ public final class HRLibraryActivity extends Activity {
                     play(filtered.get(position));
             }
         });
+        gameList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override public boolean onItemLongClick(AdapterView<?> parent, View view,
+                    int position, long id) {
+                if (position >= 0 && position < filtered.size()) {
+                    showGameHelp(filtered.get(position));
+                    return true;
+                }
+                return false;
+            }
+        });
         root.addView(gameList, new LinearLayout.LayoutParams(-1, 0, 1.0f));
 
         status = text("L1/R1  SWITCH SYSTEM  •  A  PLAY  •  B  BACK", 11, MUTED, false);
@@ -403,14 +413,7 @@ public final class HRLibraryActivity extends Activity {
     private void play(final Game game) {
         HRCoreCatalog.Core core = HRCoreCatalog.forSystem(game.system);
         if (core == null) {
-            new AlertDialog.Builder(this)
-                .setTitle("Manual setup needed")
-                .setMessage("Automatic emulator setup for " +
-                    HRCoreCatalog.shortSystem(game.system) +
-                    " isn't ready yet. Open Advanced to select a compatible installed core, or choose another game.")
-                .setPositiveButton("Advanced", (d, w) -> openRetroArch(null, null))
-                .setNegativeButton("Back", null)
-                .show();
+            showAdvancedSystemOptions(game);
             return;
         }
         if (!HRCoreInstaller.isInstalled(this, core)) {
@@ -431,8 +434,86 @@ public final class HRLibraryActivity extends Activity {
             HRCoreInstaller.coreFile(this, core).getAbsolutePath());
     }
 
+    /*
+     * Dolphin and Android PS2 emulators are separate native Android apps;
+     * a PCSX2 desktop core must never be auto-installed as an ARM64 core.
+     * We open the user's selected installed app instead of pretending the
+     * RetroArch core downloader can satisfy these systems. Android app
+     * installers manage their own storage and legally obtained BIOS.
+     */
+    private void showAdvancedSystemOptions(final Game game) {
+        final String system = game.system;
+        final boolean dolphin = "Nintendo - GameCube".equals(system)
+                || "Nintendo - Wii".equals(system);
+        final boolean ps2 = "Sony - PlayStation 2".equals(system);
+        if (!dolphin && !ps2) {
+            new AlertDialog.Builder(this)
+                .setTitle("Additional setup needed")
+                .setMessage("This system needs an emulator you choose manually. " +
+                    "The full RetroArch settings are still available. " +
+                    "When you quit RetroArch, HR Retro will reopen your game library.")
+                .setPositiveButton("Advanced", (d, w) -> openRetroArch(null, null))
+                .setNegativeButton("Back", null).show();
+            return;
+        }
+        final String appName = dolphin ? "Dolphin" : "NetherSX2 / AetherSX2";
+        final String packageName = dolphin
+                ? "org.dolphinemu.dolphinemu" : "xyz.aethersx2.android";
+        final Intent installed = getPackageManager().getLaunchIntentForPackage(packageName);
+        final String message = (dolphin
+                ? "GameCube and Wii games use the separate Dolphin Android app."
+                : "PCSX2 is a desktop emulator; PS2 on Android requires a compatible Android app such as NetherSX2, plus your own legally obtained BIOS.")
+                + "\n\n" + (installed == null
+                    ? appName + " isn't currently detectable. Install and configure it separately, then try again."
+                    : "Open " + appName + " to configure its game library and launch this game there.")
+                + "\n\nAdvanced opens RetroArch's technical menu, not a compatible automatic core.";
+        new AlertDialog.Builder(this)
+            .setTitle(HRCoreCatalog.shortSystem(system) + " setup")
+            .setMessage(message)
+            .setPositiveButton(installed != null ? "Open " + appName : "OK",
+                (d, w) -> {
+                    if (installed != null)
+                        startActivity(installed);
+                })
+            .setNeutralButton("Advanced", (d, w) -> openRetroArch(null, null))
+            .setNegativeButton("Back", null)
+            .show();
+    }
+
+    private void showGameHelp(final Game game) {
+        String system = game.system;
+        if ("Nintendo - Nintendo DS".equals(system)) {
+            new AlertDialog.Builder(this)
+                .setTitle("Nintendo DS controls")
+                .setMessage("While playing, press START + SELECT together to open the in-game menu. " +
+                    "Select Quick Menu → Core Options to adjust the DS screen layout. " +
+                    "For fast-forward, open Settings → Input → Hotkeys and bind a spare button to Fast-Forward (Hold). " +
+                    "These controls are still manual in this test build.")
+                .setPositiveButton("OK", null).show();
+        } else if ("Sega - Dreamcast".equals(system)) {
+            new AlertDialog.Builder(this)
+                .setTitle("Dreamcast black-screen checks")
+                .setMessage("Flycast may need compatible OpenGL/Vulkan video settings or additional firmware depending on the game. " +
+                    "Try START + SELECT to open the menu; inspect Quick Menu → Core Options and Video settings. " +
+                    "HR Retro does not download BIOS files. A black screen is not yet fixed in this build.")
+                .setPositiveButton("Advanced", (d, w) -> openRetroArch(null, null))
+                .setNegativeButton("Back", null).show();
+        } else if ("Nintendo - GameCube".equals(system)
+                || "Nintendo - Wii".equals(system)
+                || "Sony - PlayStation 2".equals(system)) {
+            showAdvancedSystemOptions(game);
+        } else {
+            new AlertDialog.Builder(this)
+                .setTitle("Game controls")
+                .setMessage("Press START + SELECT together during gameplay to show RetroArch's in-game menu. " +
+                    "Long-press a game for context-sensitive help. Return from Advanced by exiting RetroArch.")
+                .setPositiveButton("OK", null).show();
+        }
+    }
+
     private void openRetroArch(String game, String corePath) {
         Intent intent = new Intent(this, RetroActivityFuture.class);
+        intent.putExtra("HR_RETRO_RETURN_LIBRARY", true);
         if (game != null && corePath != null) {
             intent.putExtra("ROM", game);
             intent.putExtra("LIBRETRO", corePath);

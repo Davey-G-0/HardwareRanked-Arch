@@ -65,6 +65,7 @@ public final class HRSetupActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        HRInputSetup.migrateMenuShortcut(this);
         installManageShortcut();
 
         Intent incoming = getIntent();
