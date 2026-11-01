@@ -239,6 +239,29 @@ public final class RetroActivityFuture extends RetroActivityCamera {
     if (quitfocus) System.exit(0);
   }
 
+  /**
+   * Return from the RetroArch Advanced menu or in-game Quit action to the
+   * HR Retro library. Only enabled when launched by our library screen.
+   */
+  @Override
+  public void onRetroArchExit() {
+    boolean goHome = getIntent() != null
+        && getIntent().getBooleanExtra("HR_RETRO_RETURN_LIBRARY", false);
+    if (goHome && !isFinishing()) {
+      runOnUiThread(new Runnable() {
+        @Override public void run() {
+          Intent library = new Intent(RetroActivityFuture.this, HRLibraryActivity.class);
+          library.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+              | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+          startActivity(library);
+          finish();
+        }
+      });
+    } else {
+      super.onRetroArchExit();
+    }
+  }
+
   @Override
   public void onDestroy() {
     super.onDestroy();

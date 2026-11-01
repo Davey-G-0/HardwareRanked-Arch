@@ -94,4 +94,13 @@ require(import_path, "games = deduplicate(groups);")
 assert any(e.get(android_name) ==
            "com.retroarch.browser.retroactivity.HRLibraryActivity"
            for e in tree.getroot().iter("activity"))
+# The simplified Android in-game menu must retain the original action types,
+# honor core save-state support, and preserve full technical UI for Advanced.
+menu = read("menu/menu_displaylist.c")
+for action in ("Resume Game", "Save Game", "Load Game", "Display",
+               "Controls", "Game Settings", "Exit Game"):
+    assert '"'+action+'"' in menu, action
+assert "if (!settings->bools.menu_show_advanced_settings)" in menu
+assert "savestates_enabled &&" in menu
+require("config.def.h", "#if defined(ANDROID)\\n#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_START_SELECT".replace("\\n", "\n"))
 print("HR Retro source and Android XML checks passed")
