@@ -4755,6 +4755,92 @@ static int menu_displaylist_parse_load_content_settings(
       bool savestates_enabled             = core_info_current_supports_savestate();
       rarch_system_info_t *sys_info       = &runloop_state_get_ptr()->system;
 
+#ifdef ANDROID
+      /*
+       * HR Retro controller-first pause menu. Keep the same RetroArch
+       * action handlers and core support checks; only reduce and rename
+       * what the player sees. Enable Advanced Settings in the original
+       * RetroArch settings to restore the full technical Quick Menu.
+       */
+      if (!settings->bools.menu_show_advanced_settings)
+      {
+         if (quickmenu_show_resume_content)
+            if (menu_entries_append(list, "Resume Game",
+                  MENU_ENUM_LABEL_RESUME_CONTENT_STR,
+                  MENU_ENUM_LABEL_RESUME_CONTENT,
+                  MENU_SETTING_ACTION_RUN, 0, 0, NULL))
+               count++;
+
+         if (savestates_enabled &&
+               settings->bools.quick_menu_show_save_load_state)
+         {
+            if (menu_entries_append(list, "Save Game",
+                  MENU_ENUM_LABEL_SAVE_STATE_STR,
+                  MENU_ENUM_LABEL_SAVE_STATE,
+                  MENU_SETTING_ACTION_SAVESTATE, 0, 0, NULL))
+               count++;
+            if (menu_entries_append(list, "Load Game",
+                  MENU_ENUM_LABEL_LOAD_STATE_STR,
+                  MENU_ENUM_LABEL_LOAD_STATE,
+                  MENU_SETTING_ACTION_LOADSTATE, 0, 0, NULL))
+               count++;
+         }
+
+#if defined(HAVE_CG) || defined(HAVE_GLSL) || defined(HAVE_SLANG) || defined(HAVE_HLSL)
+         if (settings->bools.quick_menu_show_shaders &&
+               !settings->bools.kiosk_mode_enable)
+         {
+            gfx_ctx_flags_t ctx_flags;
+            ctx_flags.flags = 0;
+            video_context_driver_get_flags(&ctx_flags);
+            if (BIT32_GET(ctx_flags.flags, GFX_CTX_FLAGS_SHADERS_SLANG) ||
+                BIT32_GET(ctx_flags.flags, GFX_CTX_FLAGS_SHADERS_GLSL) ||
+                BIT32_GET(ctx_flags.flags, GFX_CTX_FLAGS_SHADERS_CG) ||
+                BIT32_GET(ctx_flags.flags, GFX_CTX_FLAGS_SHADERS_HLSL))
+               if (menu_entries_append(list, "Display",
+                     MENU_ENUM_LABEL_SHADER_OPTIONS_STR,
+                     MENU_ENUM_LABEL_SHADER_OPTIONS,
+                     MENU_SETTING_ACTION, 0, 0, NULL))
+                  count++;
+         }
+#endif
+
+         if (!settings->bools.kiosk_mode_enable)
+         {
+            if (settings->bools.quick_menu_show_controls)
+               if (menu_entries_append(list, "Controls",
+                     MENU_ENUM_LABEL_CORE_INPUT_REMAPPING_OPTIONS_STR,
+                     MENU_ENUM_LABEL_CORE_INPUT_REMAPPING_OPTIONS,
+                     MENU_SETTING_ACTION, 0, 0, NULL))
+                  count++;
+
+            if (settings->bools.quick_menu_show_options)
+               if (menu_entries_append(list, "Game Settings",
+                     MENU_ENUM_LABEL_CORE_OPTIONS_STR,
+                     MENU_ENUM_LABEL_CORE_OPTIONS,
+                     MENU_SETTING_ACTION_CORE_OPTIONS, 0, 0, NULL))
+                  count++;
+         }
+
+         /* Multi-disc games must remain usable without Advanced menus. */
+         if (disk_control_enabled(&sys_info->disk_control))
+            if (menu_entries_append(list, "Change Disc",
+                  MENU_ENUM_LABEL_DISK_OPTIONS_STR,
+                  MENU_ENUM_LABEL_DISK_OPTIONS,
+                  MENU_SETTING_ACTION_CORE_DISK_OPTIONS, 0, 0, NULL))
+               count++;
+
+         if (settings->bools.quick_menu_show_close_content)
+            if (menu_entries_append(list, "Exit Game",
+                  MENU_ENUM_LABEL_CLOSE_CONTENT_STR,
+                  MENU_ENUM_LABEL_CLOSE_CONTENT,
+                  horizontal ? MENU_SETTING_ACTION_CLOSE_HORIZONTAL :
+                        MENU_SETTING_ACTION_CLOSE, 0, 0, NULL))
+               count++;
+         return count;
+      }
+#endif /* ANDROID */
+
       if (quickmenu_show_resume_content)
          if (menu_entries_append(list,
                msg_hash_to_str(MENU_ENUM_LABEL_VALUE_RESUME_CONTENT),
