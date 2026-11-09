@@ -251,37 +251,37 @@ public final class RetroActivityFuture extends RetroActivityCamera {
   /** Single Start + Select remains RetroArch's menu shortcut. Three quick
    * Start + Select chords return to the HR Retro console shelf. */
   @Override
-  public boolean onKeyDown(int keyCode, KeyEvent event) {
-    if (keyCode == KeyEvent.KEYCODE_BUTTON_START)
-      hrStartDown = true;
-    else if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT)
-      hrSelectDown = true;
+  public boolean dispatchKeyEvent(KeyEvent event) {
+    int keyCode = event.getKeyCode();
+    if (event.getAction() == KeyEvent.ACTION_DOWN) {
+      if (keyCode == KeyEvent.KEYCODE_BUTTON_START)
+        hrStartDown = true;
+      else if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT)
+        hrSelectDown = true;
 
-    if (hrStartDown && hrSelectDown && !hrChordCounted) {
-      long now = SystemClock.uptimeMillis();
-      if (now - hrLastReturnChordAt > HR_RETURN_CHORD_WINDOW_MS)
-        hrReturnChordCount = 0;
-      hrReturnChordCount++;
-      hrLastReturnChordAt = now;
-      hrChordCounted = true;
-      if (hrReturnChordCount >= 3) {
-        returnToLibrary();
-        return true;
+      if (hrStartDown && hrSelectDown && !hrChordCounted) {
+        long now = SystemClock.uptimeMillis();
+        if (now - hrLastReturnChordAt > HR_RETURN_CHORD_WINDOW_MS)
+          hrReturnChordCount = 0;
+        hrReturnChordCount++;
+        hrLastReturnChordAt = now;
+        hrChordCounted = true;
+        if (hrReturnChordCount >= 3) {
+          returnToLibrary();
+          return true;
+        }
+      }
+    } else if (event.getAction() == KeyEvent.ACTION_UP) {
+      if (keyCode == KeyEvent.KEYCODE_BUTTON_START) {
+        hrStartDown = false;
+        hrChordCounted = false;
+      } else if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
+        hrSelectDown = false;
+        hrChordCounted = false;
       }
     }
-    return super.onKeyDown(keyCode, event);
-  }
-
-  @Override
-  public boolean onKeyUp(int keyCode, KeyEvent event) {
-    if (keyCode == KeyEvent.KEYCODE_BUTTON_START) {
-      hrStartDown = false;
-      hrChordCounted = false;
-    } else if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
-      hrSelectDown = false;
-      hrChordCounted = false;
-    }
-    return super.onKeyUp(keyCode, event);
+    // Intercept before NativeActivity's focused surface consumes gamepad keys.
+    return super.dispatchKeyEvent(event);
   }
 
   /**
@@ -298,18 +298,27 @@ public final class RetroActivityFuture extends RetroActivityCamera {
       super.onRetroArchExit();
   }
 
+  @Override
+  public void onBackPressed() {
+    if (getIntent() != null &&
+        getIntent().getBooleanExtra("HR_RETRO_RETURN_LIBRARY", false)) {
+      returnToLibrary();
+      return;
+    }
+    super.onBackPressed();
+  }
+
   private void returnToLibrary() {
     if (hrReturningToLibrary || isFinishing()) return;
     hrReturningToLibrary = true;
-    runOnUiThread(new Runnable() {
-      @Override public void run() {
-        Intent library = new Intent(RetroActivityFuture.this, HRLibraryActivity.class);
-        library.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-            | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        startActivity(library);
-        finish();
-      }
-    });
+    // Native exit terminates this activity's process immediately after the
+    // callback. Deliver the handoff to the library process so its queued UI
+    // work survives that native exit.
+    Intent handoff = new Intent(this, HRReturnToLibraryReceiver.class);
+    handoff.setAction(HRReturnToLibraryReceiver.ACTION_RETURN_TO_LIBRARY);
+    handoff.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+    sendBroadcast(handoff);
+    finish();
   }
 
   @Override
