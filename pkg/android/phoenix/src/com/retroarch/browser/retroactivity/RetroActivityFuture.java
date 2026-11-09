@@ -8,6 +8,7 @@ import android.view.DisplayCutout;
 import android.view.Gravity;
 import android.view.PointerIcon;
 import android.view.View;
+import android.view.KeyEvent;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
@@ -19,6 +20,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.SystemClock;
 import com.retroarch.browser.preferences.util.UserPreferences;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -31,6 +33,13 @@ public final class RetroActivityFuture extends RetroActivityCamera {
 
   // If set to true then RetroArch will completely exit when it loses focus
   private boolean quitfocus = false;
+  private boolean hrStartDown = false;
+  private boolean hrSelectDown = false;
+  private boolean hrChordCounted = false;
+  private boolean hrReturningToLibrary = false;
+  private int hrReturnChordCount = 0;
+  private long hrLastReturnChordAt = 0;
+  private static final long HR_RETURN_CHORD_WINDOW_MS = 2200;
 
   // Top-level window decor view
   private View mDecorView;
@@ -239,6 +248,42 @@ public final class RetroActivityFuture extends RetroActivityCamera {
     if (quitfocus) System.exit(0);
   }
 
+  /** Single Start + Select remains RetroArch's menu shortcut. Three quick
+   * Start + Select chords return to the HR Retro console shelf. */
+  @Override
+  public boolean onKeyDown(int keyCode, KeyEvent event) {
+    if (keyCode == KeyEvent.KEYCODE_BUTTON_START)
+      hrStartDown = true;
+    else if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT)
+      hrSelectDown = true;
+
+    if (hrStartDown && hrSelectDown && !hrChordCounted) {
+      long now = SystemClock.uptimeMillis();
+      if (now - hrLastReturnChordAt > HR_RETURN_CHORD_WINDOW_MS)
+        hrReturnChordCount = 0;
+      hrReturnChordCount++;
+      hrLastReturnChordAt = now;
+      hrChordCounted = true;
+      if (hrReturnChordCount >= 3) {
+        returnToLibrary();
+        return true;
+      }
+    }
+    return super.onKeyDown(keyCode, event);
+  }
+
+  @Override
+  public boolean onKeyUp(int keyCode, KeyEvent event) {
+    if (keyCode == KeyEvent.KEYCODE_BUTTON_START) {
+      hrStartDown = false;
+      hrChordCounted = false;
+    } else if (keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
+      hrSelectDown = false;
+      hrChordCounted = false;
+    }
+    return super.onKeyUp(keyCode, event);
+  }
+
   /**
    * Return from the RetroArch Advanced menu or in-game Quit action to the
    * HR Retro library. Only enabled when launched by our library screen.
@@ -247,19 +292,24 @@ public final class RetroActivityFuture extends RetroActivityCamera {
   public void onRetroArchExit() {
     boolean goHome = getIntent() != null
         && getIntent().getBooleanExtra("HR_RETRO_RETURN_LIBRARY", false);
-    if (goHome && !isFinishing()) {
-      runOnUiThread(new Runnable() {
-        @Override public void run() {
-          Intent library = new Intent(RetroActivityFuture.this, HRLibraryActivity.class);
-          library.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-              | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-          startActivity(library);
-          finish();
-        }
-      });
-    } else {
+    if (goHome && !isFinishing())
+      returnToLibrary();
+    else
       super.onRetroArchExit();
-    }
+  }
+
+  private void returnToLibrary() {
+    if (hrReturningToLibrary || isFinishing()) return;
+    hrReturningToLibrary = true;
+    runOnUiThread(new Runnable() {
+      @Override public void run() {
+        Intent library = new Intent(RetroActivityFuture.this, HRLibraryActivity.class);
+        library.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+            | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(library);
+        finish();
+      }
+    });
   }
 
   @Override
