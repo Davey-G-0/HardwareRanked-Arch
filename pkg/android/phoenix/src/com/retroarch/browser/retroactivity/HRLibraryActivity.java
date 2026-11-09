@@ -68,6 +68,7 @@ public final class HRLibraryActivity extends Activity {
     private static final int MUTED = Color.rgb(175, 188, 197);
     private static final int PICK_ARTWORK = 7412;
     private static final int REQUEST_HOME_ROLE = 7413;
+    private static final int PICK_LOGO = 7414;
 
     private static final class Game {
         final String system;
@@ -113,6 +114,7 @@ public final class HRLibraryActivity extends Activity {
     private TextView heroTitle;
     private TextView heroCount;
     private ImageView heroImage;
+    private ImageView heroLogo;
     private FrameLayout hero;
     private HorizontalScrollView tabScroll;
     private LinearLayout homePanel;
@@ -280,15 +282,17 @@ public final class HRLibraryActivity extends Activity {
     private void buildScreen() {
         getWindow().setStatusBarColor(DARK);
         getWindow().setNavigationBarColor(DARK);
+        hideSystemBars();
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(14), dp(9), dp(14), dp(9));
+        root.setPadding(0, 0, 0, 0);
         root.setBackgroundColor(DARK);
         setContentView(root);
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(18), dp(5), dp(18), 0);
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(56)));
 
         header = text("HR RETRO", 23, YELLOW, true);
@@ -326,33 +330,41 @@ public final class HRLibraryActivity extends Activity {
         hero.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { openSystemGames(); }
         });
-        homePanel.addView(hero, new LinearLayout.LayoutParams(-1, dp(218)));
+        homePanel.addView(hero, new LinearLayout.LayoutParams(-1, 0, 1.0f));
         heroImage = new ImageView(this);
         heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
         heroImage.setAlpha(.84f);
         hero.addView(heroImage, new FrameLayout.LayoutParams(-1, -1));
         View shade = new View(this);
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-            new int[] { Color.argb(215, 7, 9, 12), Color.argb(35, 7, 9, 12) }));
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] { Color.argb(155, 7, 9, 12), Color.argb(12, 7, 9, 12),
+                Color.argb(185, 7, 9, 12) }));
         hero.addView(shade, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout heroCopy = new LinearLayout(this);
         heroCopy.setOrientation(LinearLayout.VERTICAL);
-        heroCopy.setGravity(Gravity.BOTTOM);
-        heroCopy.setPadding(dp(22), dp(16), dp(18), dp(16));
+        heroCopy.setGravity(Gravity.TOP | Gravity.LEFT);
+        heroCopy.setPadding(dp(34), dp(34), dp(24), dp(16));
         FrameLayout.LayoutParams heroCopyParams = new FrameLayout.LayoutParams(-1, -1);
         hero.addView(heroCopy, heroCopyParams);
         TextView eyebrow = text("HR RETRO  /  SYSTEM SELECT", 11, YELLOW, true);
         heroCopy.addView(eyebrow);
-        heroTitle = text("SELECT A SYSTEM", 26, TEXT, true);
+        heroLogo = new ImageView(this);
+        heroLogo.setScaleType(ImageView.ScaleType.FIT_START);
+        heroLogo.setAdjustViewBounds(true);
+        heroLogo.setVisibility(View.GONE);
+        heroCopy.addView(heroLogo, new LinearLayout.LayoutParams(dp(440), dp(118)));
+        heroTitle = text("SELECT A SYSTEM", 40, TEXT, true);
+        heroTitle.setShadowLayer(dp(5), 0, dp(2), Color.BLACK);
         heroCopy.addView(heroTitle);
         heroCount = text("Browse by system", 13, TEXT, false);
+        heroCount.setShadowLayer(dp(3), 0, dp(1), Color.BLACK);
         heroCopy.addView(heroCount);
 
         tabScroll = new HorizontalScrollView(this);
         tabScroll.setHorizontalScrollBarEnabled(false);
         tabScroll.setFillViewport(false);
         tabScroll.setFocusable(false);
-        homePanel.addView(tabScroll, new LinearLayout.LayoutParams(-1, dp(64)));
+        tabScroll.setPadding(dp(18), 0, dp(18), dp(4));
 
         tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
@@ -415,15 +427,24 @@ public final class HRLibraryActivity extends Activity {
         gamesPanel.addView(gameList, new LinearLayout.LayoutParams(-1, 0, 1.0f));
         wireFocusNavigation();
 
-        status = text("L1/R1  SWITCH SYSTEM  •  A  PLAY  •  B  BACK", 11, MUTED, false);
+        status = text("←/→  SYSTEMS  •  A  OPEN  •  OPTIONS  ART / CONTROLS", 10, MUTED, false);
         status.setGravity(Gravity.CENTER);
-        root.addView(status, new LinearLayout.LayoutParams(-1, dp(32)));
+        root.addView(status, new LinearLayout.LayoutParams(-1, dp(24)));
+        root.addView(tabScroll, new LinearLayout.LayoutParams(-1, dp(58)));
         getWindow().getDecorView().post(new Runnable() {
             @Override public void run() {
                 if (!tabViews.isEmpty())
                     tabViews.get(0).requestFocus();
             }
         });
+    }
+
+    private void hideSystemBars() {
+        int flags = View.SYSTEM_UI_FLAG_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        getWindow().getDecorView().setSystemUiVisibility(flags);
     }
 
     private void rebuildTabs() {
@@ -519,6 +540,21 @@ public final class HRLibraryActivity extends Activity {
         if (heroTitle == null || systems.isEmpty()) return;
         String system = systems.get(selectedSystem);
         heroTitle.setText(HRCoreCatalog.shortSystem(system));
+        String logo = prefs.getString("logo:" + system, null);
+        if (logo == null || logo.isEmpty()) {
+            heroLogo.setVisibility(View.GONE);
+            heroTitle.setVisibility(View.VISIBLE);
+        } else {
+            try {
+                heroLogo.setImageURI(Uri.parse(logo));
+                heroLogo.setVisibility(View.VISIBLE);
+                heroTitle.setVisibility(View.GONE);
+            } catch (RuntimeException ex) {
+                Log.w(TAG, "Could not load saved console logo", ex);
+                heroLogo.setVisibility(View.GONE);
+                heroTitle.setVisibility(View.VISIBLE);
+            }
+        }
         int count = 0;
         for (Game game : games) if (system.equals(game.system)) count++;
         heroCount.setText(count + (count == 1 ? " GAME" : " GAMES")
@@ -974,11 +1010,58 @@ public final class HRLibraryActivity extends Activity {
             .setTitle("HR Retro options")
             .setItems(options, (dialog, which) -> {
                 if (which == 0) scrapeExistingBoxArt();
-                else if (which == 1) pickArtwork();
+                else if (which == 1) showArtworkOptions();
                 else if (which == 2) showControlsOptions();
                 else if (which == 3) requestHomeRole();
                 else openRetroArch(null, null);
             }).show();
+    }
+
+    private void showArtworkOptions() {
+        final String[] choices = {
+            "Choose background image",
+            "Use a game's box art as background",
+            "Choose console logo PNG",
+            "Reset to automatic art"
+        };
+        new AlertDialog.Builder(this).setTitle("Customize " +
+            HRCoreCatalog.shortSystem(systems.get(selectedSystem)))
+            .setItems(choices, (dialog, which) -> {
+                if (which == 0) pickArtwork();
+                else if (which == 1) chooseGameCover();
+                else if (which == 2) pickLogo();
+                else {
+                    String system = systems.get(selectedSystem);
+                    prefs.edit().remove("artwork:" + system)
+                        .remove("logo:" + system).apply();
+                    refreshHero();
+                }
+            }).show();
+    }
+
+    private void chooseGameCover() {
+        final ArrayList<Game> choices = new ArrayList<>();
+        final ArrayList<String> labels = new ArrayList<>();
+        String system = systems.get(selectedSystem);
+        for (Game game : games) {
+            if (system.equals(game.system) && findBoxArt(game) != null) {
+                choices.add(game);
+                labels.add(game.label.replace('_', ' '));
+            }
+        }
+        if (choices.isEmpty()) {
+            Toast.makeText(this, "Scrape or add game artwork first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Choose a box-art background")
+            .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                File cover = findBoxArt(choices.get(which));
+                if (cover != null) {
+                    prefs.edit().putString("artwork:" + system,
+                        Uri.fromFile(cover).toString()).apply();
+                    refreshHero();
+                }
+            }).setNegativeButton("Cancel", null).show();
     }
 
     private void scrapeExistingBoxArt() {
@@ -997,6 +1080,7 @@ public final class HRLibraryActivity extends Activity {
                     });
                 runOnUiThread(() -> {
                     scrapingArt.set(false);
+                    boxArtCache.clear();
                     showGames();
                     status.setText("BOX ART READY  •  " + result.downloaded +
                         " NEW  •  " + result.alreadyPresent + " CACHED  •  " +
@@ -1027,13 +1111,21 @@ public final class HRLibraryActivity extends Activity {
     }
 
     private void pickArtwork() {
+        pickImage(PICK_ARTWORK);
+    }
+
+    private void pickLogo() {
+        pickImage(PICK_LOGO);
+    }
+
+    private void pickImage(int requestCode) {
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("image/*");
         pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         try {
-            startActivityForResult(pick, PICK_ARTWORK);
+            startActivityForResult(pick, requestCode);
         } catch (Exception ex) {
             Toast.makeText(this, "Image picker is unavailable.", Toast.LENGTH_SHORT).show();
         }
@@ -1108,13 +1200,15 @@ public final class HRLibraryActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PICK_ARTWORK && resultCode == RESULT_OK && data != null &&
+        if ((requestCode == PICK_ARTWORK || requestCode == PICK_LOGO) &&
+                resultCode == RESULT_OK && data != null &&
                 data.getData() != null) {
             Uri uri = data.getData();
             try {
                 getContentResolver().takePersistableUriPermission(uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                prefs.edit().putString("artwork:" + systems.get(selectedSystem),
+                String key = requestCode == PICK_LOGO ? "logo:" : "artwork:";
+                prefs.edit().putString(key + systems.get(selectedSystem),
                     uri.toString()).apply();
                 refreshHero();
             } catch (Exception ex) {
@@ -1189,8 +1283,15 @@ public final class HRLibraryActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        hideSystemBars();
         if (gameList != null && !installing.get())
             showGames();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemBars();
     }
 
     private final class GameAdapter extends BaseAdapter {
