@@ -18,6 +18,11 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <!-- Only query known optional emulator packages; no broad app inventory. -->
     <queries>
+        <!-- Surface installed Android games in the library's Android Games tab. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <package android:name="org.dolphinemu.dolphinemu" />
         <package android:name="xyz.aethersx2.android" />
     </queries>
@@ -62,6 +67,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="tv.ouya.intent.category.GAME" />
+                <!-- Optional user-selected Android Home app role. -->
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity-alias>
         <activity android:name="com.retroarch.browser.debug.CoreSideloadActivity" android:exported="true"/>
