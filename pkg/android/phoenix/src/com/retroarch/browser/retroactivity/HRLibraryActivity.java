@@ -711,6 +711,10 @@ public final class HRLibraryActivity extends Activity {
     }
 
     private void applyTouchscreenPreference() {
+        // Until the player changes this hidden option, preserve whatever
+        // overlay behavior their existing RetroArch configuration uses.
+        if (!prefs.contains("touchscreen_controls"))
+            return;
         File external = getExternalFilesDir(null);
         File config = external == null ? null : new File(external, "retroarch.cfg");
         if (config == null || !config.isFile() || config.length() > 2 * 1024 * 1024)
