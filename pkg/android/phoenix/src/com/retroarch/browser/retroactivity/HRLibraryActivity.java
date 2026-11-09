@@ -16,6 +16,12 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.app.role.RoleManager;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -42,9 +48,11 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.json.JSONArray;
@@ -53,13 +61,11 @@ import org.json.JSONObject;
 public final class HRLibraryActivity extends Activity {
     private static final String TAG = "HRLibrary";
     private static final String PREFS = "hrretro_library";
-    private static final int YELLOW = Color.rgb(176, 116, 255);
-    private static final int TEAL = Color.rgb(104, 227, 210);
-    private static final int DARK = Color.rgb(9, 10, 18);
-    private static final int SURFACE = Color.rgb(23, 25, 39);
-    private static final int TEXT = Color.rgb(246, 244, 255);
-    private static final int MUTED = Color.rgb(171, 173, 194);
-    private static final int ALL = 0;
+    private static final int YELLOW = Color.rgb(255, 217, 15);
+    private static final int DARK = Color.rgb(9, 11, 14);
+    private static final int SURFACE = Color.rgb(24, 29, 35);
+    private static final int TEXT = Color.rgb(245, 246, 247);
+    private static final int MUTED = Color.rgb(175, 188, 197);
     private static final int PICK_ARTWORK = 7412;
     private static final int REQUEST_HOME_ROLE = 7413;
 
@@ -68,14 +74,22 @@ public final class HRLibraryActivity extends Activity {
         final String label;
         final String path;
         final boolean androidApp;
+        final String database;
+        final String artwork;
         Game(String system, String label, String path) {
-            this(system, label, path, false);
+            this(system, label, path, false, "", "");
         }
         Game(String system, String label, String path, boolean androidApp) {
+            this(system, label, path, androidApp, "", "");
+        }
+        Game(String system, String label, String path, boolean androidApp,
+                String database, String artwork) {
             this.system = system;
             this.label = label;
             this.path = path;
             this.androidApp = androidApp;
+            this.database = database;
+            this.artwork = artwork;
         }
     }
 
@@ -83,6 +97,7 @@ public final class HRLibraryActivity extends Activity {
     private final List<Game> filtered = new ArrayList<>();
     private final List<String> systems = new ArrayList<>();
     private final List<TextView> tabViews = new ArrayList<>();
+    private final Map<String, File> boxArtCache = new HashMap<>();
     private final AtomicBoolean installing = new AtomicBoolean(false);
     private SharedPreferences prefs;
     private File playlistDir;
@@ -98,6 +113,12 @@ public final class HRLibraryActivity extends Activity {
     private ImageView heroImage;
     private FrameLayout hero;
     private HorizontalScrollView tabScroll;
+    private LinearLayout homePanel;
+    private LinearLayout gamesPanel;
+    private TextView gamesTitle;
+    private TextView gamesCount;
+    private TextView backButton;
+    private boolean inGamePanel = false;
     private boolean hasPrompted = false;
 
     @Override
@@ -132,8 +153,8 @@ public final class HRLibraryActivity extends Activity {
     private GradientDrawable background(int color, boolean border) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(color);
-        d.setCornerRadius(dp(14));
-        if (border) d.setStroke(dp(2), TEAL);
+        d.setCornerRadius(dp(7));
+        if (border) d.setStroke(dp(2), YELLOW);
         return d;
     }
 
@@ -142,7 +163,7 @@ public final class HRLibraryActivity extends Activity {
         v.setText(label);
         v.setTextSize(sp);
         v.setTextColor(color);
-        v.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
+        v.setTypeface(Typeface.MONOSPACE, bold ? Typeface.BOLD : Typeface.NORMAL);
         v.setGravity(Gravity.CENTER_VERTICAL);
         v.setSingleLine(false);
         return v;
@@ -151,7 +172,7 @@ public final class HRLibraryActivity extends Activity {
     private TextView button(String label, boolean selected) {
         TextView v = text(label, 13, selected ? DARK : TEXT, true);
         v.setGravity(Gravity.CENTER);
-        v.setPadding(dp(15), dp(11), dp(15), dp(11));
+        v.setPadding(dp(12), dp(10), dp(12), dp(10));
         v.setBackground(background(selected ? YELLOW : SURFACE, false));
         v.setFocusable(true);
         v.setClickable(true);
@@ -189,7 +210,10 @@ public final class HRLibraryActivity extends Activity {
                         String label = item.optString("label", "").trim();
                         if (!uri.startsWith("saf://") || label.length() == 0)
                             continue;
-                        games.add(new Game(system, label, uri));
+                        String database = item.optString("db_name", "");
+                        String artwork = item.optString("thumbnail",
+                            item.optString("boxart", ""));
+                        games.add(new Game(system, label, uri, false, database, artwork));
                     }
                     if (games.size() > before)
                         detected.add(system);
@@ -203,7 +227,6 @@ public final class HRLibraryActivity extends Activity {
                 return a.label.compareToIgnoreCase(b.label);
             }
         });
-        systems.add("All Games");
         ArrayList<String> ordered = new ArrayList<>(detected);
         Collections.sort(ordered, new Comparator<String>() {
             @Override public int compare(String a, String b) {
@@ -217,9 +240,11 @@ public final class HRLibraryActivity extends Activity {
             games.addAll(android);
             systems.add("Android Games");
         }
-        // Start at the left edge every time. Selection follows explicit
-        // controller navigation, never a stale or end-of-list focus.
-        selectedSystem = ALL;
+        if (systems.isEmpty())
+            systems.add("Add Games");
+        // The console carousel always opens at its left edge. Games appear
+        // only after a system has been opened from this shelf.
+        selectedSystem = 0;
     }
 
     private ArrayList<Game> readAndroidGames() {
@@ -284,17 +309,27 @@ public final class HRLibraryActivity extends Activity {
         });
         top.addView(settings);
 
+        homePanel = new LinearLayout(this);
+        homePanel.setOrientation(LinearLayout.VERTICAL);
+        root.addView(homePanel, new LinearLayout.LayoutParams(-1, 0, 1.0f));
+
         hero = new FrameLayout(this);
+        hero.setId(View.generateViewId());
         hero.setBackground(background(SURFACE, false));
         hero.setClipToOutline(true);
-        root.addView(hero, new LinearLayout.LayoutParams(-1, dp(168)));
+        hero.setFocusable(true);
+        hero.setClickable(true);
+        hero.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openSystemGames(); }
+        });
+        homePanel.addView(hero, new LinearLayout.LayoutParams(-1, dp(218)));
         heroImage = new ImageView(this);
         heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        heroImage.setAlpha(.48f);
+        heroImage.setAlpha(.84f);
         hero.addView(heroImage, new FrameLayout.LayoutParams(-1, -1));
         View shade = new View(this);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-            new int[] { Color.rgb(35, 19, 62), Color.argb(60, 10, 10, 20) }));
+            new int[] { Color.argb(215, 7, 9, 12), Color.argb(35, 7, 9, 12) }));
         hero.addView(shade, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout heroCopy = new LinearLayout(this);
         heroCopy.setOrientation(LinearLayout.VERTICAL);
@@ -302,9 +337,9 @@ public final class HRLibraryActivity extends Activity {
         heroCopy.setPadding(dp(22), dp(16), dp(18), dp(16));
         FrameLayout.LayoutParams heroCopyParams = new FrameLayout.LayoutParams(-1, -1);
         hero.addView(heroCopy, heroCopyParams);
-        TextView eyebrow = text("YOUR COLLECTION", 11, TEAL, true);
+        TextView eyebrow = text("HR RETRO  /  SYSTEM SELECT", 11, YELLOW, true);
         heroCopy.addView(eyebrow);
-        heroTitle = text("All Games", 26, TEXT, true);
+        heroTitle = text("SELECT A SYSTEM", 26, TEXT, true);
         heroCopy.addView(heroTitle);
         heroCount = text("Browse by system", 13, TEXT, false);
         heroCopy.addView(heroCount);
@@ -313,7 +348,7 @@ public final class HRLibraryActivity extends Activity {
         tabScroll.setHorizontalScrollBarEnabled(false);
         tabScroll.setFillViewport(false);
         tabScroll.setFocusable(false);
-        root.addView(tabScroll, new LinearLayout.LayoutParams(-1, dp(64)));
+        homePanel.addView(tabScroll, new LinearLayout.LayoutParams(-1, dp(64)));
 
         tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
@@ -321,12 +356,36 @@ public final class HRLibraryActivity extends Activity {
         tabScroll.addView(tabs, new HorizontalScrollView.LayoutParams(-2, -1));
         rebuildTabs();
 
+        gamesPanel = new LinearLayout(this);
+        gamesPanel.setOrientation(LinearLayout.VERTICAL);
+        gamesPanel.setPadding(dp(4), dp(4), dp(4), 0);
+        gamesPanel.setVisibility(View.GONE);
+        root.addView(gamesPanel, new LinearLayout.LayoutParams(-1, 0, 1.0f));
+        LinearLayout gamePanelHeader = new LinearLayout(this);
+        gamePanelHeader.setOrientation(LinearLayout.HORIZONTAL);
+        gamePanelHeader.setGravity(Gravity.CENTER_VERTICAL);
+        gamesPanel.addView(gamePanelHeader, new LinearLayout.LayoutParams(-1, dp(58)));
+        backButton = button("← SYSTEMS", false);
+        backButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showSystemsPanel(); }
+        });
+        gamePanelHeader.addView(backButton);
+        LinearLayout gamePanelLabels = new LinearLayout(this);
+        gamePanelLabels.setOrientation(LinearLayout.VERTICAL);
+        gamePanelLabels.setPadding(dp(14), 0, 0, 0);
+        gamePanelHeader.addView(gamePanelLabels,
+            new LinearLayout.LayoutParams(0, -1, 1.0f));
+        gamesTitle = text("SYSTEM", 17, YELLOW, true);
+        gamePanelLabels.addView(gamesTitle);
+        gamesCount = text("0 GAMES", 10, MUTED, false);
+        gamePanelLabels.addView(gamesCount);
+
         gameList = new ListView(this);
         gameList.setId(View.generateViewId());
         gameList.setBackgroundColor(DARK);
         gameList.setCacheColorHint(DARK);
         gameList.setDividerHeight(dp(1));
-        gameList.setSelector(background(Color.rgb(40, 34, 57), true));
+        gameList.setSelector(background(Color.rgb(39, 42, 45), true));
         gameList.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
         gameList.setFocusable(true);
         gameList.setItemsCanFocus(false);
@@ -349,9 +408,8 @@ public final class HRLibraryActivity extends Activity {
                 return false;
             }
         });
-        root.addView(gameList, new LinearLayout.LayoutParams(-1, 0, 1.0f));
-        for (TextView tab : tabViews)
-            tab.setNextFocusDownId(gameList.getId());
+        gamesPanel.addView(gameList, new LinearLayout.LayoutParams(-1, 0, 1.0f));
+        wireFocusNavigation();
 
         status = text("L1/R1  SWITCH SYSTEM  •  A  PLAY  •  B  BACK", 11, MUTED, false);
         status.setGravity(Gravity.CENTER);
@@ -377,12 +435,23 @@ public final class HRLibraryActivity extends Activity {
             tabs.addView(view, p);
             tabViews.add(view);
             view.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { selectSystem(tab, true); }
+                @Override public void onClick(View v) {
+                    selectSystem(tab, false);
+                    openSystemGames();
+                }
             });
         }
         if (gameList != null)
-            for (TextView tab : tabViews)
-                tab.setNextFocusDownId(gameList.getId());
+            wireFocusNavigation();
+    }
+
+    private void wireFocusNavigation() {
+        if (hero == null || tabViews.isEmpty()) return;
+        for (TextView tab : tabViews)
+            tab.setNextFocusUpId(hero.getId());
+        hero.setNextFocusDownId(tabViews.get(selectedSystem).getId());
+        if (backButton != null && gameList != null)
+            backButton.setNextFocusDownId(gameList.getId());
     }
 
     private void selectSystem(int index, boolean focusGames) {
@@ -392,10 +461,7 @@ public final class HRLibraryActivity extends Activity {
         prefs.edit().putString("last_system", systems.get(index)).apply();
         rebuildTabs();
         showGames();
-        if (focusGames && !filtered.isEmpty()) {
-            gameList.requestFocus();
-            gameList.setSelection(0);
-        }
+        if (focusGames) openSystemGames();
     }
 
     private void showGames() {
@@ -403,31 +469,59 @@ public final class HRLibraryActivity extends Activity {
             return;
         filtered.clear();
         for (Game g : games)
-            if (selectedSystem == ALL || systems.get(selectedSystem).equals(g.system))
+            if (systems.get(selectedSystem).equals(g.system))
                 filtered.add(g);
         adapter.notifyDataSetChanged();
         int missing = missingCores().size();
-        coresButton.setText(missing == 0 ? "EMULATORS ✓" : "GET EMULATORS " + missing);
+        int guided = guidedSystems().size();
+        coresButton.setText(missing + guided == 0 ? "EMULATORS ✓" :
+            "SETUP " + (missing + guided));
         header.setText("HR RETRO");
         refreshHero();
-        if (filtered.isEmpty())
-            status.setText("NO GAMES YET  •  ADD GAMES TO CHOOSE YOUR FOLDER");
+        if (gamesTitle != null) gamesTitle.setText(HRCoreCatalog.shortSystem(systems.get(selectedSystem)));
+        if (gamesCount != null) gamesCount.setText(filtered.size() + " GAMES");
+        if (inGamePanel)
+            status.setText("A  PLAY  •  B  SYSTEMS  •  HOLD A GAME FOR HELP");
         else
-            status.setText("L1/R1  SYSTEMS  •  A  PLAY  •  B  BACK");
+            status.setText("←/→  SYSTEMS  •  A  OPEN  •  OPTIONS  ARTWORK / CONTROLS");
         gameList.setSelection(0);
+    }
+
+    private void openSystemGames() {
+        if (systems.isEmpty() || "Add Games".equals(systems.get(selectedSystem))) {
+            openSetup();
+            return;
+        }
+        inGamePanel = true;
+        homePanel.setVisibility(View.GONE);
+        gamesPanel.setVisibility(View.VISIBLE);
+        showGames();
+        gameList.setSelection(0);
+        gameList.requestFocus();
+        if (filtered.isEmpty())
+            status.setText("NO GAMES FOR THIS SYSTEM  •  B  BACK");
+    }
+
+    private void showSystemsPanel() {
+        inGamePanel = false;
+        gamesPanel.setVisibility(View.GONE);
+        homePanel.setVisibility(View.VISIBLE);
+        status.setText("←/→  SYSTEMS  •  A  OPEN  •  OPTIONS  ARTWORK / CONTROLS");
+        if (selectedSystem >= 0 && selectedSystem < tabViews.size())
+            tabViews.get(selectedSystem).requestFocus();
     }
 
     private void refreshHero() {
         if (heroTitle == null || systems.isEmpty()) return;
         String system = systems.get(selectedSystem);
         heroTitle.setText(HRCoreCatalog.shortSystem(system));
-        heroCount.setText(filtered.size() + (filtered.size() == 1 ? " game" : " games")
-            + "  ·  A open  ·  ←/→ systems");
+        int count = 0;
+        for (Game game : games) if (system.equals(game.system)) count++;
+        heroCount.setText(count + (count == 1 ? " GAME" : " GAMES")
+            + "  ·  A  OPEN SYSTEM");
         String artwork = prefs.getString("artwork:" + system, null);
         if (artwork == null) {
-            heroImage.setImageDrawable(null);
-            hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[] { Color.rgb(88, 31, 151), Color.rgb(35, 113, 126), DARK }));
+            heroImage.setImageBitmap(pixelSystemArtwork(system));
         } else {
             try {
                 heroImage.setImageURI(Uri.parse(artwork));
@@ -436,6 +530,134 @@ public final class HRLibraryActivity extends Activity {
                 heroImage.setImageDrawable(null);
             }
         }
+    }
+
+    private Bitmap pixelSystemArtwork(String system) {
+        Bitmap bitmap = Bitmap.createBitmap(640, 280, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint();
+        paint.setAntiAlias(false);
+        canvas.drawColor(DARK);
+        paint.setColor(SURFACE);
+        canvas.drawRect(0, 0, 640, 280, paint);
+        int seed = system.hashCode();
+        paint.setColor(Color.rgb(42, 47, 51));
+        for (int i = 0; i < 45; i++) {
+            seed = seed * 1103515245 + 12345;
+            int x = Math.abs(seed % 620);
+            seed = seed * 1103515245 + 12345;
+            int y = Math.abs(seed % 260);
+            int size = 5 + Math.abs(seed % 18);
+            canvas.drawRect(x, y, x + size, y + size, paint);
+        }
+        paint.setColor(YELLOW);
+        canvas.drawRect(458, 42, 574, 158, paint);
+        paint.setColor(DARK);
+        canvas.drawRect(470, 54, 562, 146, paint);
+        paint.setColor(YELLOW);
+        canvas.drawRect(486, 70, 546, 130, paint);
+        paint.setColor(TEXT);
+        canvas.drawRect(498, 82, 510, 94, paint);
+        canvas.drawRect(522, 82, 534, 94, paint);
+        canvas.drawRect(510, 106, 522, 118, paint);
+        paint.setColor(YELLOW);
+        paint.setTypeface(Typeface.MONOSPACE);
+        paint.setFakeBoldText(true);
+        paint.setTextSize(11);
+        canvas.drawText("HR RETRO  /  PLATFORM", 34, 74, paint);
+        String title = HRCoreCatalog.shortSystem(system).toUpperCase(Locale.US);
+        paint.setTextSize(34);
+        while (paint.measureText(title) > 400 && paint.getTextSize() > 18)
+            paint.setTextSize(paint.getTextSize() - 2);
+        canvas.drawText(title, 34, 142, paint);
+        paint.setColor(TEXT);
+        paint.setTextSize(13);
+        paint.setFakeBoldText(false);
+        canvas.drawText("A  OPEN LIBRARY     OPTIONS  CUSTOMIZE ART", 34, 188, paint);
+        return bitmap;
+    }
+
+    private String normalizedArtName(String name) {
+        return name.toLowerCase(Locale.US).replaceAll("\\.[^.]+$", "")
+            .replaceAll("[^a-z0-9]", "");
+    }
+
+    private File findBoxArt(Game game) {
+        if (boxArtCache.containsKey(game.path))
+            return boxArtCache.get(game.path);
+        if (game.artwork != null && game.artwork.length() > 0) {
+            File supplied = game.artwork.startsWith("file:")
+                ? new File(Uri.parse(game.artwork).getPath()) : new File(game.artwork);
+            if (supplied.isFile()) {
+                boxArtCache.put(game.path, supplied);
+                return supplied;
+            }
+        }
+        File playlistParent = playlistDir == null ? null : playlistDir.getParentFile();
+        File root = playlistParent == null ? null : new File(playlistParent, "thumbnails");
+        if (root == null || !root.isDirectory()) {
+            boxArtCache.put(game.path, null);
+            return null;
+        }
+        ArrayList<String> databases = new ArrayList<>();
+        if (game.database != null && !game.database.isEmpty())
+            databases.add(game.database.replaceFirst("\\.lpl$", ""));
+        if (!databases.contains(game.system)) databases.add(game.system);
+        String wanted = normalizedArtName(game.label);
+        for (String database : databases) {
+            File directory = new File(new File(root, database), "Named_Boxarts");
+            File[] covers = directory.listFiles();
+            if (covers == null) continue;
+            for (File cover : covers) {
+                String name = cover.getName();
+                if (cover.isFile() && normalizedArtName(name).equals(wanted)) {
+                    boxArtCache.put(game.path, cover);
+                    return cover;
+                }
+            }
+        }
+        boxArtCache.put(game.path, null);
+        return null;
+    }
+
+    private Bitmap decodeBoxArt(File file) {
+        if (file == null || !file.isFile()) return null;
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = Math.max(1, Math.min(bounds.outWidth / 160, bounds.outHeight / 200));
+        options.inPreferredConfig = Bitmap.Config.RGB_565;
+        return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+    }
+
+    private Bitmap pixelGameArtwork(Game game) {
+        Bitmap bitmap = Bitmap.createBitmap(128, 168, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint();
+        paint.setAntiAlias(false);
+        int shade = (game.label.hashCode() & 0x7fffffff) % 35;
+        canvas.drawColor(Color.rgb(22 + shade, 25 + shade, 29 + shade));
+        paint.setColor(YELLOW);
+        canvas.drawRect(13, 16, 115, 22, paint);
+        paint.setColor(TEXT);
+        canvas.drawRect(32, 47, 96, 111, paint);
+        paint.setColor(SURFACE);
+        canvas.drawRect(40, 55, 88, 103, paint);
+        paint.setColor(YELLOW);
+        canvas.drawRect(52, 68, 76, 92, paint);
+        paint.setTypeface(Typeface.MONOSPACE);
+        paint.setFakeBoldText(true);
+        paint.setTextSize(10);
+        String title = game.label.replace('_', ' ').toUpperCase(Locale.US);
+        String line = title.length() > 18 ? title.substring(0, 18) : title;
+        float width = paint.measureText(line);
+        canvas.drawText(line, Math.max(5, (128 - width) / 2), 143, paint);
+        paint.setTextSize(8);
+        String platform = HRCoreCatalog.shortSystem(game.system).toUpperCase(Locale.US);
+        canvas.drawText(platform.length() > 18 ? platform.substring(0, 18) : platform,
+            8, 158, paint);
+        return bitmap;
     }
 
     private List<HRCoreCatalog.Core> missingCores() {
@@ -447,33 +669,63 @@ public final class HRLibraryActivity extends Activity {
         return missing;
     }
 
+    private List<String> guidedSystems() {
+        ArrayList<String> result = new ArrayList<>();
+        for (String system : systems) {
+            if ("Android Games".equals(system) || "Add Games".equals(system)) continue;
+            if (HRCoreCatalog.forSystem(system) == null) result.add(system);
+        }
+        return result;
+    }
+
     private void offerMissingCores() {
         if (installing.get())
             return;
         final List<HRCoreCatalog.Core> missing = missingCores();
-        if (missing.isEmpty()) {
+        final List<String> guides = guidedSystems();
+        if (missing.isEmpty() && guides.isEmpty()) {
             new AlertDialog.Builder(this)
                 .setTitle("Emulators ready")
-                .setMessage("All automatically supported systems have their recommended cores installed. Some advanced systems may need separate setup.")
+                .setMessage("Every scanned system has its recommended RetroArch core installed.")
                 .setPositiveButton("OK", null)
                 .show();
             return;
         }
-        prefs.edit().putBoolean("cores_approval_prompted", true).apply();
         StringBuilder message = new StringBuilder();
-        message.append("We found games that need ")
-            .append(missing.size())
-            .append(missing.size() == 1 ? " emulator.\n\n" : " emulators.\n\n");
-        for (HRCoreCatalog.Core core : missing) {
-            message.append("• ").append(core.display).append("\n");
+        if (!missing.isEmpty()) {
+            prefs.edit().putBoolean("cores_approval_prompted", true).apply();
+            message.append("RetroArch cores to install:\n");
+            for (HRCoreCatalog.Core core : missing)
+                message.append("• ").append(core.display).append("\n");
         }
-        message.append("\nDownload from the official Libretro server? An internet connection is required. Core licenses vary; no game files or BIOS will be downloaded.");
-        new AlertDialog.Builder(this)
-            .setTitle("Ready to play")
-            .setMessage(message.toString())
-            .setPositiveButton("Install " + missing.size(), (dialog, which) -> installCores(missing))
-            .setNegativeButton("Later", null)
-            .show();
+        if (!guides.isEmpty()) {
+            message.append("\nSystems that use a separate Android app:\n");
+            for (String system : guides)
+                message.append("• ").append(HRCoreCatalog.shortSystem(system)).append("\n");
+        }
+        if (!missing.isEmpty())
+            message.append("\nCore downloads come from Libretro. No games or BIOS are included.");
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+            .setTitle("System setup")
+            .setMessage(message.toString());
+        if (!missing.isEmpty())
+            dialog.setPositiveButton("Install cores", (d, w) -> installCores(missing));
+        if (!guides.isEmpty())
+            dialog.setNeutralButton("System guides", (d, w) -> showSystemGuidePicker());
+        dialog.setNegativeButton("Later", null).show();
+    }
+
+    private void showSystemGuidePicker() {
+        final List<String> guides = guidedSystems();
+        if (guides.isEmpty()) return;
+        String[] names = new String[guides.size()];
+        for (int i = 0; i < guides.size(); i++)
+            names[i] = HRCoreCatalog.shortSystem(guides.get(i));
+        new AlertDialog.Builder(this).setTitle("Choose a system")
+            .setItems(names, (dialog, which) -> {
+                String system = guides.get(which);
+                showAdvancedSystemOptions(new Game(system, "", ""));
+            }).setNegativeButton("Back", null).show();
     }
 
     private void installCores(final List<HRCoreCatalog.Core> cores) {
@@ -559,9 +811,39 @@ public final class HRLibraryActivity extends Activity {
      */
     private void showAdvancedSystemOptions(final Game game) {
         final String system = game.system;
+        final boolean threeDs = "Nintendo - Nintendo 3DS".equals(system);
+        final boolean xbox = system.toLowerCase(Locale.US).contains("xbox");
         final boolean dolphin = "Nintendo - GameCube".equals(system)
                 || "Nintendo - Wii".equals(system);
         final boolean ps2 = "Sony - PlayStation 2".equals(system);
+        if (threeDs) {
+            final String packageName = "org.azahar_emu.azahar";
+            final Intent installed = getPackageManager().getLaunchIntentForPackage(packageName);
+            String message = "HR Retro found Nintendo 3DS games. Azahar publishes an Android build from its official releases.\n\n" +
+                (installed == null
+                    ? "Open the official release page, download the Android Vanilla APK, then tap it in Downloads and approve Android's installer. Open Azahar once and grant access to your 3DS folder."
+                    : "Azahar is installed. Open it and select your 3DS folder. HR Retro does not yet pass individual 3DS files directly to that app.");
+            new AlertDialog.Builder(this)
+                .setTitle("Nintendo 3DS setup")
+                .setMessage(message)
+                .setPositiveButton(installed == null ? "Official APKs" : "Open Azahar",
+                    (d, w) -> {
+                        if (installed != null) startActivity(installed);
+                        else openUrl("https://github.com/azahar-emu/azahar/releases/latest");
+                    })
+                .setNeutralButton("Advanced", (d, w) -> openRetroArch(null, null))
+                .setNegativeButton("Back", null).show();
+            return;
+        }
+        if (xbox) {
+            new AlertDialog.Builder(this)
+                .setTitle("Xbox setup")
+                .setMessage("HR Retro found Xbox games, but the official xemu project currently publishes desktop builds, not an Android APK. I won't point you at an unverified APK. Keep these games in the library while we add a vetted Android emulator guide if a supported option becomes available.")
+                .setPositiveButton("Official xemu project",
+                    (d, w) -> openUrl("https://xemu.app/"))
+                .setNegativeButton("Back", null).show();
+            return;
+        }
         if (!dolphin && !ps2) {
             new AlertDialog.Builder(this)
                 .setTitle("Additional setup needed")
@@ -586,17 +868,35 @@ public final class HRLibraryActivity extends Activity {
         new AlertDialog.Builder(this)
             .setTitle(HRCoreCatalog.shortSystem(system) + " setup")
             .setMessage(message)
-            .setPositiveButton(installed != null ? "Open " + appName : "OK",
+            .setPositiveButton(installed != null ? "Open " + appName :
+                    dolphin ? "Dolphin downloads" : "OK",
                 (d, w) -> {
                     if (installed != null)
                         startActivity(installed);
+                    else if (dolphin)
+                        openUrl("https://dolphin-emu.org/download/");
                 })
             .setNeutralButton("Advanced", (d, w) -> openRetroArch(null, null))
             .setNegativeButton("Back", null)
             .show();
     }
 
+    private void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception ex) {
+            Toast.makeText(this, "No browser is available to open that project page.",
+                Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void showGameHelp(final Game game) {
+        if (game.androidApp) {
+            new AlertDialog.Builder(this).setTitle("Android game")
+                .setMessage("This opens the installed Android game directly.")
+                .setPositiveButton("OK", null).show();
+            return;
+        }
         String system = game.system;
         if ("Nintendo - Nintendo DS".equals(system)) {
             new AlertDialog.Builder(this)
@@ -614,9 +914,7 @@ public final class HRLibraryActivity extends Activity {
                     "HR Retro does not download BIOS files. A black screen is not yet fixed in this build.")
                 .setPositiveButton("Advanced", (d, w) -> openRetroArch(null, null))
                 .setNegativeButton("Back", null).show();
-        } else if ("Nintendo - GameCube".equals(system)
-                || "Nintendo - Wii".equals(system)
-                || "Sony - PlayStation 2".equals(system)) {
+        } else if (HRCoreCatalog.forSystem(system) == null) {
             showAdvancedSystemOptions(game);
         } else {
             new AlertDialog.Builder(this)
@@ -643,6 +941,13 @@ public final class HRLibraryActivity extends Activity {
         intent.putExtra("hrretro.manage_library", true);
         startActivity(intent);
         finish();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        showSystemsPanel();
     }
 
     private void showOptions() {
@@ -777,30 +1082,41 @@ public final class HRLibraryActivity extends Activity {
     @Override
     public boolean onKeyDown(int key, KeyEvent event) {
         int focusedTab = tabViews.indexOf(getCurrentFocus());
-        if (focusedTab >= 0 && (key == KeyEvent.KEYCODE_DPAD_LEFT ||
+        if (!inGamePanel && focusedTab >= 0 && (key == KeyEvent.KEYCODE_DPAD_LEFT ||
                 key == KeyEvent.KEYCODE_DPAD_RIGHT)) {
             int step = key == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1;
             int next = Math.max(0, Math.min(tabViews.size() - 1, focusedTab + step));
+            selectSystem(next, false);
             tabViews.get(next).requestFocus();
             tabScroll.smoothScrollTo(tabViews.get(next).getLeft(), 0);
             return true;
         }
-        if (focusedTab >= 0 && key == KeyEvent.KEYCODE_DPAD_DOWN && !filtered.isEmpty()) {
-            gameList.setSelection(0);
-            gameList.requestFocus();
+        if (!inGamePanel && focusedTab >= 0 && key == KeyEvent.KEYCODE_DPAD_UP) {
+            hero.requestFocus();
             return true;
         }
-        if (getCurrentFocus() == gameList && key == KeyEvent.KEYCODE_DPAD_UP &&
+        if (!inGamePanel && getCurrentFocus() == hero && key == KeyEvent.KEYCODE_DPAD_DOWN &&
                 !tabViews.isEmpty()) {
             tabViews.get(selectedSystem).requestFocus();
             return true;
         }
+        if (inGamePanel && getCurrentFocus() == gameList && key == KeyEvent.KEYCODE_DPAD_UP) {
+            backButton.requestFocus();
+            return true;
+        }
+        if (inGamePanel && getCurrentFocus() == backButton && key == KeyEvent.KEYCODE_DPAD_DOWN) {
+            gameList.setSelection(0);
+            gameList.requestFocus();
+            return true;
+        }
         if (key == KeyEvent.KEYCODE_BUTTON_L1) {
+            if (inGamePanel) { showSystemsPanel(); return true; }
             selectSystem(Math.max(0, selectedSystem - 1), false);
             tabViews.get(selectedSystem).requestFocus();
             return true;
         }
         if (key == KeyEvent.KEYCODE_BUTTON_R1) {
+            if (inGamePanel) { showSystemsPanel(); return true; }
             selectSystem(Math.min(systems.size() - 1, selectedSystem + 1), false);
             tabViews.get(selectedSystem).requestFocus();
             return true;
@@ -818,7 +1134,8 @@ public final class HRLibraryActivity extends Activity {
             }
         }
         if (key == KeyEvent.KEYCODE_BUTTON_B) {
-            finish();
+            if (inGamePanel) showSystemsPanel();
+            else finish();
             return true;
         }
         return super.onKeyDown(key, event);
@@ -839,27 +1156,53 @@ public final class HRLibraryActivity extends Activity {
         @Override
         public View getView(int position, View recycled, ViewGroup parent) {
             LinearLayout row;
+            ImageView cover;
             TextView title;
             TextView detail;
             if (recycled instanceof LinearLayout) {
                 row = (LinearLayout) recycled;
-                title = (TextView) row.getChildAt(0);
-                detail = (TextView) row.getChildAt(1);
+                cover = (ImageView) row.getChildAt(0);
+                LinearLayout labels = (LinearLayout) row.getChildAt(1);
+                title = (TextView) labels.getChildAt(0);
+                detail = (TextView) labels.getChildAt(1);
             } else {
                 row = new LinearLayout(HRLibraryActivity.this);
-                row.setOrientation(LinearLayout.VERTICAL);
+                row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(dp(15), dp(6), dp(12), dp(6));
+                row.setPadding(dp(10), dp(7), dp(12), dp(7));
+                cover = new ImageView(HRLibraryActivity.this);
+                cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                LinearLayout.LayoutParams coverParams =
+                    new LinearLayout.LayoutParams(dp(66), dp(92));
+                coverParams.setMargins(0, 0, dp(14), 0);
+                row.addView(cover, coverParams);
+                LinearLayout labels = new LinearLayout(HRLibraryActivity.this);
+                labels.setOrientation(LinearLayout.VERTICAL);
+                labels.setGravity(Gravity.CENTER_VERTICAL);
+                row.addView(labels, new LinearLayout.LayoutParams(0, -1, 1.0f));
                 title = text("", 18, TEXT, true);
                 title.setSingleLine(true);
                 title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                detail = text("", 11, MUTED, false);
+                detail = text("", 10, MUTED, false);
                 detail.setSingleLine(true);
-                row.addView(title);
-                row.addView(detail);
-                row.setBackgroundColor(SURFACE);
+                labels.addView(title);
+                labels.addView(detail);
+                row.setBackground(background(SURFACE, false));
             }
             Game game = filtered.get(position);
+            if (game.androidApp) {
+                try {
+                    Drawable icon = getPackageManager().getApplicationIcon(game.path);
+                    cover.setImageDrawable(icon);
+                } catch (PackageManager.NameNotFoundException ex) {
+                    cover.setImageBitmap(pixelGameArtwork(game));
+                }
+            } else if (game.artwork != null && game.artwork.startsWith("content://")) {
+                cover.setImageURI(Uri.parse(game.artwork));
+            } else {
+                Bitmap art = decodeBoxArt(findBoxArt(game));
+                cover.setImageBitmap(art == null ? pixelGameArtwork(game) : art);
+            }
             title.setText(game.label.replace('_', ' '));
             HRCoreCatalog.Core core = HRCoreCatalog.forSystem(game.system);
             boolean installed = core != null && HRCoreInstaller.isInstalled(
