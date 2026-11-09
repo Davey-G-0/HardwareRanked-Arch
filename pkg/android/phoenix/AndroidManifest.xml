@@ -52,7 +52,9 @@
             android:exported="false"
             android:theme="@android:style/Theme.Material.NoActionBar"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode" />
-        <activity android:name="com.retroarch.browser.retroactivity.RetroActivityFuture" android:exported="true" android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" android:launchMode="singleInstance">
+        <receiver android:name="com.retroarch.browser.retroactivity.HRReturnToLibraryReceiver"
+            android:exported="false" />
+        <activity android:name="com.retroarch.browser.retroactivity.RetroActivityFuture" android:exported="true" android:process=":retroarch" android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" android:launchMode="singleInstance">
             <meta-data android:name="android.app.lib_name" android:value="retroarch-activity" />
             <meta-data android:name="android.app.func_name" android:value="ANativeActivity_onCreate" />
         </activity>
