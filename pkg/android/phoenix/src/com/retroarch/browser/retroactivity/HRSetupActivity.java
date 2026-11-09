@@ -12,6 +12,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.Color;
@@ -27,6 +28,7 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.CheckBox;
 
 import com.retroarch.R;
 
@@ -59,6 +61,7 @@ public final class HRSetupActivity extends Activity {
     private TextView chooseButton;
     private TextView launchButton;
     private TextView skipButton;
+    private CheckBox scrapeArtwork;
     private volatile boolean scanning = false;
 
     @Override
@@ -158,7 +161,19 @@ public final class HRSetupActivity extends Activity {
         important.setPadding(dp(18), dp(18), dp(18), dp(18));
         important.setBackground(surface(SURFACE, false));
         root.addView(important);
-        addSpace(root, 24);
+        addSpace(root, 14);
+
+        scrapeArtwork = new CheckBox(this);
+        scrapeArtwork.setText("Download available box art while scanning\n(from the Libretro thumbnail collection)");
+        scrapeArtwork.setTextColor(MUTED);
+        scrapeArtwork.setTextSize(14);
+        scrapeArtwork.setTypeface(android.graphics.Typeface.MONOSPACE);
+        scrapeArtwork.setButtonTintList(ColorStateList.valueOf(YELLOW));
+        scrapeArtwork.setChecked(prefs.getBoolean("scrape_box_art", false));
+        scrapeArtwork.setOnCheckedChangeListener((button, checked) ->
+            prefs.edit().putBoolean("scrape_box_art", checked).apply());
+        root.addView(scrapeArtwork);
+        addSpace(root, 14);
 
         chooseButton = action("Choose Game Folder", true);
         root.addView(chooseButton, new LinearLayout.LayoutParams(-1, dp(68)));
@@ -306,9 +321,50 @@ public final class HRSetupActivity extends Activity {
         return fallback;
     }
 
+    static File thumbnailDirectory(Context context) throws IOException {
+        File external = context.getExternalFilesDir(null);
+        File[] configCandidates = {
+            external == null ? null : new File(external, "retroarch.cfg"),
+            new File(context.getFilesDir(), "retroarch.cfg")
+        };
+        for (File config : configCandidates) {
+            if (config == null || !config.isFile()) continue;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    new FileInputStream(config), StandardCharsets.UTF_8))) {
+                for (String line; (line = reader.readLine()) != null;) {
+                    String trimmed = line.trim();
+                    if (!trimmed.startsWith("thumbnails_directory")) continue;
+                    int equals = trimmed.indexOf('=');
+                    if (equals < 0 || !trimmed.substring(0, equals).trim()
+                            .equals("thumbnails_directory")) continue;
+                    String value = trimmed.substring(equals + 1).trim();
+                    if (value.startsWith("\"") && value.endsWith("\"")
+                            && value.length() >= 2)
+                        value = value.substring(1, value.length() - 1);
+                    if (value.isEmpty() || value.equals("default") ||
+                            !new File(value).isAbsolute()) break;
+                    File selected = new File(value);
+                    if (!selected.isDirectory() && !selected.mkdirs())
+                        throw new IOException("The configured thumbnail folder isn't writable.");
+                    return selected;
+                }
+            }
+            // Native startup prefers the first existing config; do likewise.
+            break;
+        }
+        File playlists = playlistDirectory(context);
+        File parent = playlists.getParentFile();
+        File thumbnails = new File(parent == null ? context.getFilesDir() : parent,
+                "thumbnails");
+        if (!thumbnails.isDirectory() && !thumbnails.mkdirs())
+            throw new IOException("Couldn't create RetroArch's thumbnail folder.");
+        return thumbnails;
+    }
+
     private void scan(final Uri uri) {
         scanning = true;
         cancel.set(false);
+        final boolean downloadArtwork = scrapeArtwork != null && scrapeArtwork.isChecked();
         chooseButton.setEnabled(false);
         chooseButton.setAlpha(0.5f);
         launchButton.setVisibility(View.GONE);
@@ -337,6 +393,27 @@ public final class HRSetupActivity extends Activity {
                             });
                     if (cancel.get())
                         throw new InterruptedException("Cancelled");
+                    final String artworkSummary;
+                    if (downloadArtwork) {
+                        runOnUiThread(() -> setStatus("Looking up box art…", false));
+                        HRThumbnailScraper.Result artwork = HRThumbnailScraper.scrape(
+                            HRSetupActivity.this,
+                            playlistDirectory(HRSetupActivity.this),
+                            cancel,
+                            (completed, total, downloaded) -> {
+                                if (completed % 20 == 0 || completed == total) {
+                                    final int done = completed;
+                                    final int count = downloaded;
+                                    runOnUiThread(() -> setStatus(
+                                        "Box art " + done + " / " + total +
+                                        " • downloaded " + count, false));
+                                }
+                            });
+                        artworkSummary = " • " + artwork.downloaded + " box art downloaded" +
+                            " • " + artwork.missing + " unavailable";
+                    } else {
+                        artworkSummary = "";
+                    }
                     prefs.edit()
                         .putString(LAST_URI, uri.toString())
                         .putInt(GAME_COUNT, result.games)
@@ -350,6 +427,7 @@ public final class HRSetupActivity extends Activity {
                                 result.systems + " systems" +
                                 (result.needsReview > 0
                                     ? " • " + result.needsReview + " need review" : "") +
+                                artworkSummary +
                                 (result.limited ? " • Scan limit reached" : ""),
                                 false);
                             chooseButton.setText("Choose Another Folder");
@@ -363,7 +441,7 @@ public final class HRSetupActivity extends Activity {
                         @Override public void run() {
                             finishScan();
                             if (ex instanceof InterruptedException)
-                                setStatus("Scan cancelled. No game files were changed.", false);
+                                setStatus("Scan cancelled. Your game files were left unchanged.", false);
                             else
                                 setStatus("Couldn't scan this folder: " + ex.getMessage(), true);
                         }
