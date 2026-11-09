@@ -99,8 +99,10 @@ public final class HRLibraryActivity extends Activity {
     private final List<TextView> tabViews = new ArrayList<>();
     private final Map<String, File> boxArtCache = new HashMap<>();
     private final AtomicBoolean installing = new AtomicBoolean(false);
+    private final AtomicBoolean scrapingArt = new AtomicBoolean(false);
     private SharedPreferences prefs;
     private File playlistDir;
+    private File thumbnailDir;
     private int selectedSystem = 0;
     private GameAdapter adapter;
     private ListView gameList;
@@ -127,9 +129,11 @@ public final class HRLibraryActivity extends Activity {
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         try {
             playlistDir = HRSetupActivity.playlistDirectory(this);
+            thumbnailDir = HRSetupActivity.thumbnailDirectory(this);
         } catch (Exception ex) {
             Log.e(TAG, "Playlist path unavailable", ex);
             playlistDir = new File(getFilesDir(), "playlists");
+            thumbnailDir = new File(getFilesDir(), "thumbnails");
         }
         readPlaylists();
         buildScreen();
@@ -521,7 +525,14 @@ public final class HRLibraryActivity extends Activity {
             + "  ·  A  OPEN SYSTEM");
         String artwork = prefs.getString("artwork:" + system, null);
         if (artwork == null) {
-            heroImage.setImageBitmap(pixelSystemArtwork(system));
+            Bitmap cover = null;
+            for (Game game : games) {
+                if (system.equals(game.system)) {
+                    cover = decodeBoxArt(findBoxArt(game));
+                    if (cover != null) break;
+                }
+            }
+            heroImage.setImageBitmap(cover == null ? pixelSystemArtwork(system) : cover);
         } else {
             try {
                 heroImage.setImageURI(Uri.parse(artwork));
@@ -593,8 +604,7 @@ public final class HRLibraryActivity extends Activity {
                 return supplied;
             }
         }
-        File playlistParent = playlistDir == null ? null : playlistDir.getParentFile();
-        File root = playlistParent == null ? null : new File(playlistParent, "thumbnails");
+        File root = thumbnailDir;
         if (root == null || !root.isDirectory()) {
             boxArtCache.put(game.path, null);
             return null;
@@ -603,6 +613,8 @@ public final class HRLibraryActivity extends Activity {
         if (game.database != null && !game.database.isEmpty())
             databases.add(game.database.replaceFirst("\\.lpl$", ""));
         if (!databases.contains(game.system)) databases.add(game.system);
+        String visiblePlaylist = "HR - " + game.system;
+        if (!databases.contains(visiblePlaylist)) databases.add(visiblePlaylist);
         String wanted = normalizedArtName(game.label);
         for (String database : databases) {
             File directory = new File(new File(root, database), "Named_Boxarts");
@@ -952,6 +964,7 @@ public final class HRLibraryActivity extends Activity {
 
     private void showOptions() {
         final String[] options = {
+            "Scrape box art now",
             "Customize system artwork",
             "Controls",
             "Use HR Retro as Android Home",
@@ -960,11 +973,43 @@ public final class HRLibraryActivity extends Activity {
         new AlertDialog.Builder(this)
             .setTitle("HR Retro options")
             .setItems(options, (dialog, which) -> {
-                if (which == 0) pickArtwork();
-                else if (which == 1) showControlsOptions();
-                else if (which == 2) requestHomeRole();
+                if (which == 0) scrapeExistingBoxArt();
+                else if (which == 1) pickArtwork();
+                else if (which == 2) showControlsOptions();
+                else if (which == 3) requestHomeRole();
                 else openRetroArch(null, null);
             }).show();
+    }
+
+    private void scrapeExistingBoxArt() {
+        if (!scrapingArt.compareAndSet(false, true)) return;
+        status.setText("LOOKING UP BOX ART…");
+        new Thread(() -> {
+            try {
+                HRThumbnailScraper.Result result = HRThumbnailScraper.scrape(
+                    HRLibraryActivity.this, playlistDir, new AtomicBoolean(false),
+                    (completed, total, downloaded) -> {
+                        if (completed % 20 == 0 || completed == total) {
+                            runOnUiThread(() -> status.setText(
+                                "BOX ART  " + completed + " / " + total +
+                                "  •  DOWNLOADED " + downloaded));
+                        }
+                    });
+                runOnUiThread(() -> {
+                    scrapingArt.set(false);
+                    showGames();
+                    status.setText("BOX ART READY  •  " + result.downloaded +
+                        " NEW  •  " + result.alreadyPresent + " CACHED  •  " +
+                        result.missing + " NOT FOUND");
+                });
+            } catch (Exception ex) {
+                Log.w(TAG, "Box art scan failed", ex);
+                runOnUiThread(() -> {
+                    scrapingArt.set(false);
+                    status.setText("BOX ART LOOKUP FAILED  •  CHECK YOUR CONNECTION");
+                });
+            }
+        }, "HRRetro-box-art").start();
     }
 
     private void showControlsOptions() {
