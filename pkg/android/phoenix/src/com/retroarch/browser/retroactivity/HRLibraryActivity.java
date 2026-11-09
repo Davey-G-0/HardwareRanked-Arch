@@ -11,9 +11,15 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.app.role.RoleManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -21,7 +27,9 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -45,21 +53,29 @@ import org.json.JSONObject;
 public final class HRLibraryActivity extends Activity {
     private static final String TAG = "HRLibrary";
     private static final String PREFS = "hrretro_library";
-    private static final int YELLOW = Color.rgb(255, 217, 15);
-    private static final int DARK = Color.rgb(9, 11, 14);
-    private static final int SURFACE = Color.rgb(24, 29, 35);
-    private static final int TEXT = Color.rgb(245, 246, 247);
-    private static final int MUTED = Color.rgb(175, 188, 197);
+    private static final int YELLOW = Color.rgb(176, 116, 255);
+    private static final int TEAL = Color.rgb(104, 227, 210);
+    private static final int DARK = Color.rgb(9, 10, 18);
+    private static final int SURFACE = Color.rgb(23, 25, 39);
+    private static final int TEXT = Color.rgb(246, 244, 255);
+    private static final int MUTED = Color.rgb(171, 173, 194);
     private static final int ALL = 0;
+    private static final int PICK_ARTWORK = 7412;
+    private static final int REQUEST_HOME_ROLE = 7413;
 
     private static final class Game {
         final String system;
         final String label;
         final String path;
+        final boolean androidApp;
         Game(String system, String label, String path) {
+            this(system, label, path, false);
+        }
+        Game(String system, String label, String path, boolean androidApp) {
             this.system = system;
             this.label = label;
             this.path = path;
+            this.androidApp = androidApp;
         }
     }
 
@@ -77,6 +93,11 @@ public final class HRLibraryActivity extends Activity {
     private TextView header;
     private TextView status;
     private TextView coresButton;
+    private TextView heroTitle;
+    private TextView heroCount;
+    private ImageView heroImage;
+    private FrameLayout hero;
+    private HorizontalScrollView tabScroll;
     private boolean hasPrompted = false;
 
     @Override
@@ -111,8 +132,8 @@ public final class HRLibraryActivity extends Activity {
     private GradientDrawable background(int color, boolean border) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(color);
-        d.setCornerRadius(dp(9));
-        if (border) d.setStroke(dp(2), YELLOW);
+        d.setCornerRadius(dp(14));
+        if (border) d.setStroke(dp(2), TEAL);
         return d;
     }
 
@@ -121,7 +142,7 @@ public final class HRLibraryActivity extends Activity {
         v.setText(label);
         v.setTextSize(sp);
         v.setTextColor(color);
-        v.setTypeface(Typeface.MONOSPACE, bold ? Typeface.BOLD : Typeface.NORMAL);
+        v.setTypeface(Typeface.create("sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
         v.setGravity(Gravity.CENTER_VERTICAL);
         v.setSingleLine(false);
         return v;
@@ -130,8 +151,8 @@ public final class HRLibraryActivity extends Activity {
     private TextView button(String label, boolean selected) {
         TextView v = text(label, 13, selected ? DARK : TEXT, true);
         v.setGravity(Gravity.CENTER);
-        v.setPadding(dp(12), dp(10), dp(12), dp(10));
-        v.setBackground(background(selected ? YELLOW : SURFACE, !selected));
+        v.setPadding(dp(15), dp(11), dp(15), dp(11));
+        v.setBackground(background(selected ? YELLOW : SURFACE, false));
         v.setFocusable(true);
         v.setClickable(true);
         v.setContentDescription(label);
@@ -191,9 +212,40 @@ public final class HRLibraryActivity extends Activity {
             }
         });
         systems.addAll(ordered);
-        String last = prefs.getString("last_system", "All Games");
-        int position = systems.indexOf(last);
-        selectedSystem = position < 0 ? ALL : position;
+        ArrayList<Game> android = readAndroidGames();
+        if (!android.isEmpty()) {
+            games.addAll(android);
+            systems.add("Android Games");
+        }
+        // Start at the left edge every time. Selection follows explicit
+        // controller navigation, never a stale or end-of-list focus.
+        selectedSystem = ALL;
+    }
+
+    private ArrayList<Game> readAndroidGames() {
+        ArrayList<Game> result = new ArrayList<>();
+        Intent launcher = new Intent(Intent.ACTION_MAIN);
+        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> matches = getPackageManager().queryIntentActivities(launcher, 0);
+        Set<String> seen = new LinkedHashSet<>();
+        for (ResolveInfo match : matches) {
+            if (match.activityInfo == null || match.activityInfo.applicationInfo == null)
+                continue;
+            ApplicationInfo app = match.activityInfo.applicationInfo;
+            if (app.packageName.equals(getPackageName()) || !seen.add(app.packageName))
+                continue;
+            if (Build.VERSION.SDK_INT >= 26 && app.category != ApplicationInfo.CATEGORY_GAME)
+                continue;
+            CharSequence label = match.loadLabel(getPackageManager());
+            if (label != null && label.length() > 0)
+                result.add(new Game("Android Games", label.toString(), app.packageName, true));
+        }
+        Collections.sort(result, new Comparator<Game>() {
+            @Override public int compare(Game a, Game b) {
+                return a.label.compareToIgnoreCase(b.label);
+            }
+        });
+        return result;
     }
 
     private void buildScreen() {
@@ -226,28 +278,55 @@ public final class HRLibraryActivity extends Activity {
         top.addView(coresButton);
         TextView spacer2 = new TextView(this);
         top.addView(spacer2, new LinearLayout.LayoutParams(dp(7), 1));
-        TextView settings = button("ADVANCED", false);
+        TextView settings = button("OPTIONS", false);
         settings.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { openRetroArch(null, null); }
+            @Override public void onClick(View v) { showOptions(); }
         });
         top.addView(settings);
 
-        HorizontalScrollView scroll = new HorizontalScrollView(this);
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setFillViewport(false);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, dp(55)));
+        hero = new FrameLayout(this);
+        hero.setBackground(background(SURFACE, false));
+        hero.setClipToOutline(true);
+        root.addView(hero, new LinearLayout.LayoutParams(-1, dp(168)));
+        heroImage = new ImageView(this);
+        heroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        heroImage.setAlpha(.48f);
+        hero.addView(heroImage, new FrameLayout.LayoutParams(-1, -1));
+        View shade = new View(this);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] { Color.rgb(35, 19, 62), Color.argb(60, 10, 10, 20) }));
+        hero.addView(shade, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout heroCopy = new LinearLayout(this);
+        heroCopy.setOrientation(LinearLayout.VERTICAL);
+        heroCopy.setGravity(Gravity.BOTTOM);
+        heroCopy.setPadding(dp(22), dp(16), dp(18), dp(16));
+        FrameLayout.LayoutParams heroCopyParams = new FrameLayout.LayoutParams(-1, -1);
+        hero.addView(heroCopy, heroCopyParams);
+        TextView eyebrow = text("YOUR COLLECTION", 11, TEAL, true);
+        heroCopy.addView(eyebrow);
+        heroTitle = text("All Games", 26, TEXT, true);
+        heroCopy.addView(heroTitle);
+        heroCount = text("Browse by system", 13, TEXT, false);
+        heroCopy.addView(heroCount);
+
+        tabScroll = new HorizontalScrollView(this);
+        tabScroll.setHorizontalScrollBarEnabled(false);
+        tabScroll.setFillViewport(false);
+        tabScroll.setFocusable(false);
+        root.addView(tabScroll, new LinearLayout.LayoutParams(-1, dp(64)));
 
         tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setGravity(Gravity.CENTER_VERTICAL);
-        scroll.addView(tabs, new HorizontalScrollView.LayoutParams(-2, -1));
+        tabScroll.addView(tabs, new HorizontalScrollView.LayoutParams(-2, -1));
         rebuildTabs();
 
         gameList = new ListView(this);
+        gameList.setId(View.generateViewId());
         gameList.setBackgroundColor(DARK);
         gameList.setCacheColorHint(DARK);
         gameList.setDividerHeight(dp(1));
-        gameList.setSelector(background(Color.rgb(48, 52, 58), true));
+        gameList.setSelector(background(Color.rgb(40, 34, 57), true));
         gameList.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
         gameList.setFocusable(true);
         gameList.setItemsCanFocus(false);
@@ -271,10 +350,18 @@ public final class HRLibraryActivity extends Activity {
             }
         });
         root.addView(gameList, new LinearLayout.LayoutParams(-1, 0, 1.0f));
+        for (TextView tab : tabViews)
+            tab.setNextFocusDownId(gameList.getId());
 
         status = text("L1/R1  SWITCH SYSTEM  •  A  PLAY  •  B  BACK", 11, MUTED, false);
         status.setGravity(Gravity.CENTER);
         root.addView(status, new LinearLayout.LayoutParams(-1, dp(32)));
+        getWindow().getDecorView().post(new Runnable() {
+            @Override public void run() {
+                if (!tabViews.isEmpty())
+                    tabViews.get(0).requestFocus();
+            }
+        });
     }
 
     private void rebuildTabs() {
@@ -285,8 +372,8 @@ public final class HRLibraryActivity extends Activity {
             TextView view = button(HRCoreCatalog.shortSystem(systems.get(index)),
                     index == selectedSystem);
             LinearLayout.LayoutParams p =
-                    new LinearLayout.LayoutParams(-2, dp(44));
-            p.setMargins(0, 0, dp(8), 0);
+                    new LinearLayout.LayoutParams(-2, dp(48));
+            p.setMargins(0, 0, dp(10), 0);
             tabs.addView(view, p);
             tabViews.add(view);
             view.setOnClickListener(new View.OnClickListener() {
@@ -318,14 +405,33 @@ public final class HRLibraryActivity extends Activity {
         adapter.notifyDataSetChanged();
         int missing = missingCores().size();
         coresButton.setText(missing == 0 ? "EMULATORS ✓" : "GET EMULATORS " + missing);
-        header.setText("HR RETRO  " + filtered.size() + " GAMES");
+        header.setText("HR RETRO");
+        refreshHero();
         if (filtered.isEmpty())
             status.setText("NO GAMES YET  •  ADD GAMES TO CHOOSE YOUR FOLDER");
         else
             status.setText("L1/R1  SYSTEMS  •  A  PLAY  •  B  BACK");
-        if (!filtered.isEmpty()) {
-            gameList.requestFocus();
-            gameList.setSelection(0);
+        gameList.setSelection(0);
+    }
+
+    private void refreshHero() {
+        if (heroTitle == null || systems.isEmpty()) return;
+        String system = systems.get(selectedSystem);
+        heroTitle.setText(HRCoreCatalog.shortSystem(system));
+        heroCount.setText(filtered.size() + (filtered.size() == 1 ? " game" : " games")
+            + "  ·  A open  ·  ←/→ systems");
+        String artwork = prefs.getString("artwork:" + system, null);
+        if (artwork == null) {
+            heroImage.setImageDrawable(null);
+            hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[] { Color.rgb(88, 31, 151), Color.rgb(35, 113, 126), DARK }));
+        } else {
+            try {
+                heroImage.setImageURI(Uri.parse(artwork));
+            } catch (RuntimeException ex) {
+                Log.w(TAG, "Could not load saved system artwork", ex);
+                heroImage.setImageDrawable(null);
+            }
         }
     }
 
@@ -411,6 +517,13 @@ public final class HRLibraryActivity extends Activity {
     }
 
     private void play(final Game game) {
+        if (game.androidApp) {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(game.path);
+            if (launch != null) startActivity(launch);
+            else Toast.makeText(this, "This Android game is no longer installed.",
+                Toast.LENGTH_SHORT).show();
+            return;
+        }
         HRCoreCatalog.Core core = HRCoreCatalog.forSystem(game.system);
         if (core == null) {
             showAdvancedSystemOptions(game);
@@ -512,6 +625,7 @@ public final class HRLibraryActivity extends Activity {
     }
 
     private void openRetroArch(String game, String corePath) {
+        applyTouchscreenPreference();
         Intent intent = new Intent(this, RetroActivityFuture.class);
         intent.putExtra("HR_RETRO_RETURN_LIBRARY", true);
         if (game != null && corePath != null) {
@@ -528,14 +642,160 @@ public final class HRLibraryActivity extends Activity {
         finish();
     }
 
+    private void showOptions() {
+        final String[] options = {
+            "Customize system artwork",
+            "Controls",
+            "Use HR Retro as Android Home",
+            "Advanced RetroArch settings"
+        };
+        new AlertDialog.Builder(this)
+            .setTitle("HR Retro options")
+            .setItems(options, (dialog, which) -> {
+                if (which == 0) pickArtwork();
+                else if (which == 1) showControlsOptions();
+                else if (which == 2) requestHomeRole();
+                else openRetroArch(null, null);
+            }).show();
+    }
+
+    private void showControlsOptions() {
+        final boolean enabled = prefs.getBoolean("touchscreen_controls", false);
+        new AlertDialog.Builder(this)
+            .setTitle("Controls")
+            .setMessage("Show RetroArch's on-screen controls for games without a built-in controller. Physical controller input stays enabled.")
+            .setMultiChoiceItems(new String[] { "Touchscreen controls" },
+                new boolean[] { enabled }, (dialog, which, checked) -> {
+                    prefs.edit().putBoolean("touchscreen_controls", checked).apply();
+                    applyTouchscreenPreference();
+                })
+            .setPositiveButton("Done", null)
+            .show();
+    }
+
+    private void pickArtwork() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("image/*");
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try {
+            startActivityForResult(pick, PICK_ARTWORK);
+        } catch (Exception ex) {
+            Toast.makeText(this, "Image picker is unavailable.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void requestHomeRole() {
+        if (Build.VERSION.SDK_INT < 29) {
+            new AlertDialog.Builder(this).setTitle("Android Home app")
+                .setMessage("This Android version doesn't provide the Home app chooser.")
+                .setPositiveButton("OK", null).show();
+            return;
+        }
+        RoleManager roles = (RoleManager) getSystemService(ROLE_SERVICE);
+        if (roles == null || !roles.isRoleAvailable(RoleManager.ROLE_HOME)) {
+            Toast.makeText(this, "Android Home role isn't available on this device.",
+                Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (roles.isRoleHeld(RoleManager.ROLE_HOME)) {
+            Toast.makeText(this, "HR Retro is already the Home app.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_HOME),
+            REQUEST_HOME_ROLE);
+    }
+
+    private void applyTouchscreenPreference() {
+        File external = getExternalFilesDir(null);
+        File config = external == null ? null : new File(external, "retroarch.cfg");
+        if (config == null || !config.isFile() || config.length() > 2 * 1024 * 1024)
+            return;
+        final String key = "input_overlay_enable";
+        final String value = key + " = \"" +
+            (prefs.getBoolean("touchscreen_controls", false) ? "true" : "false") + "\"";
+        File tmp = null;
+        try {
+            ArrayList<String> lines = new ArrayList<>();
+            boolean replaced = false;
+            java.io.BufferedReader in = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new java.io.FileInputStream(config),
+                    java.nio.charset.StandardCharsets.UTF_8));
+            try {
+                for (String line; (line = in.readLine()) != null;) {
+                    if (line.trim().startsWith(key + " ") || line.trim().startsWith(key + "=")) {
+                        if (!replaced) lines.add(value);
+                        replaced = true;
+                    } else lines.add(line);
+                }
+            } finally { in.close(); }
+            if (!replaced) lines.add(value);
+            tmp = File.createTempFile("hrretro-overlay-", ".cfg", config.getParentFile());
+            java.io.FileOutputStream out = new java.io.FileOutputStream(tmp);
+            try {
+                java.io.OutputStreamWriter writer = new java.io.OutputStreamWriter(out,
+                    java.nio.charset.StandardCharsets.UTF_8);
+                for (String line : lines) { writer.write(line); writer.write('\n'); }
+                writer.flush(); out.getFD().sync();
+                writer.close();
+            } finally { out.close(); }
+            if (!tmp.renameTo(config)) throw new java.io.IOException("Could not save overlay setting.");
+        } catch (Exception ex) {
+            Log.w(TAG, "Couldn't update touchscreen controls setting", ex);
+        } finally {
+            if (tmp != null && tmp.exists()) tmp.delete();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_ARTWORK && resultCode == RESULT_OK && data != null &&
+                data.getData() != null) {
+            Uri uri = data.getData();
+            try {
+                getContentResolver().takePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                prefs.edit().putString("artwork:" + systems.get(selectedSystem),
+                    uri.toString()).apply();
+                refreshHero();
+            } catch (Exception ex) {
+                Toast.makeText(this, "Couldn't save that artwork. Choose another image.",
+                    Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
     @Override
     public boolean onKeyDown(int key, KeyEvent event) {
+        int focusedTab = tabViews.indexOf(getCurrentFocus());
+        if (focusedTab >= 0 && (key == KeyEvent.KEYCODE_DPAD_LEFT ||
+                key == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            int step = key == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1;
+            int next = Math.max(0, Math.min(tabViews.size() - 1, focusedTab + step));
+            tabViews.get(next).requestFocus();
+            tabScroll.smoothScrollTo(tabViews.get(next).getLeft(), 0);
+            return true;
+        }
+        if (focusedTab >= 0 && key == KeyEvent.KEYCODE_DPAD_DOWN && !filtered.isEmpty()) {
+            gameList.setSelection(0);
+            gameList.requestFocus();
+            return true;
+        }
+        if (getCurrentFocus() == gameList && key == KeyEvent.KEYCODE_DPAD_UP &&
+                !tabViews.isEmpty()) {
+            tabViews.get(selectedSystem).requestFocus();
+            return true;
+        }
         if (key == KeyEvent.KEYCODE_BUTTON_L1) {
-            selectSystem((selectedSystem - 1 + systems.size()) % systems.size(), true);
+            selectSystem(Math.max(0, selectedSystem - 1), false);
+            tabViews.get(selectedSystem).requestFocus();
             return true;
         }
         if (key == KeyEvent.KEYCODE_BUTTON_R1) {
-            selectSystem((selectedSystem + 1) % systems.size(), true);
+            selectSystem(Math.min(systems.size() - 1, selectedSystem + 1), false);
+            tabViews.get(selectedSystem).requestFocus();
             return true;
         }
         if (key == KeyEvent.KEYCODE_BUTTON_A || key == KeyEvent.KEYCODE_DPAD_CENTER) {
@@ -598,7 +858,7 @@ public final class HRLibraryActivity extends Activity {
             boolean installed = core != null && HRCoreInstaller.isInstalled(
                 HRLibraryActivity.this, core);
             String systemLabel = HRCoreCatalog.shortSystem(game.system);
-            detail.setText(systemLabel + "   •   " +
+            detail.setText(game.androidApp ? "ANDROID GAME   •   A  OPEN" : systemLabel + "   •   " +
                 (core == null ? "Manual setup" :
                  installed ? "A  Play" : "Install " + core.display));
             return row;
