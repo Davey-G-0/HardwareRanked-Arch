@@ -380,6 +380,9 @@ public final class HRLibraryActivity extends Activity {
                 @Override public void onClick(View v) { selectSystem(tab, true); }
             });
         }
+        if (gameList != null)
+            for (TextView tab : tabViews)
+                tab.setNextFocusDownId(gameList.getId());
     }
 
     private void selectSystem(int index, boolean focusGames) {
