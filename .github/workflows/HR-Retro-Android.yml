@@ -2,7 +2,7 @@ name: HR Retro Android APK
 
 on:
   push:
-    branches: [feature/hardware-ranked-android-v0, feature/hr-retro-one-folder-setup, feature/hr-retro-core-library, feature/hr-retro-v5-odin-fixes, feature/hr-retro-v6-library-ui, feature/hr-retro-v7-console-panels, feature/hr-retro-v8-scraper-return, feature/hr-retro-v9-fullscreen-art-shelf]
+    branches: [feature/hardware-ranked-android-v0, feature/hr-retro-one-folder-setup, feature/hr-retro-core-library, feature/hr-retro-v5-odin-fixes, feature/hr-retro-v6-library-ui, feature/hr-retro-v7-console-panels, feature/hr-retro-v8-scraper-return, feature/hr-retro-v9-fullscreen-art-shelf, feature/hr-retro-v10-emulator-installer]
     paths:
       - 'config.def.h'
       - 'frontend/**'
@@ -65,6 +65,31 @@ jobs:
             pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRCoreCatalog.java \
             tools/hrretro/HRCoreCatalogTest.java
           java -cp "$RUNNER_TEMP/hrretro-classifier" com.retroarch.browser.retroactivity.HRCoreCatalogTest
+      - name: Test external emulator setup catalog and resume validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          javac -d "$RUNNER_TEMP/hrretro-classifier" \
+            pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRExternalEmulatorCatalog.java \
+            tools/hrretro/HRExternalEmulatorCatalogTest.java
+          java -cp "$RUNNER_TEMP/hrretro-classifier" com.retroarch.browser.retroactivity.HRExternalEmulatorCatalogTest
+      - name: Test reviewed APK immutability and digest enforcement
+        shell: bash
+        run: |
+          set -euo pipefail
+          javac -d "$RUNNER_TEMP/hrretro-classifier" \
+            pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRExternalEmulatorCatalog.java \
+            pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRReviewedApkStore.java \
+            tools/hrretro/HRReviewedApkStoreTest.java
+          java -cp "$RUNNER_TEMP/hrretro-classifier" com.retroarch.browser.retroactivity.HRReviewedApkStoreTest
+      - name: Test PS2 BIOS and controller setup guidance
+        shell: bash
+        run: |
+          set -euo pipefail
+          javac -d "$RUNNER_TEMP/hrretro-classifier" \
+            pkg/android/phoenix/src/com/retroarch/browser/retroactivity/HRRetroGuides.java \
+            tools/hrretro/HRRetroGuidesTest.java
+          java -cp "$RUNNER_TEMP/hrretro-classifier" com.retroarch.browser.retroactivity.HRRetroGuidesTest
       - name: Install Android SDK / NDK
         shell: bash
         run: |

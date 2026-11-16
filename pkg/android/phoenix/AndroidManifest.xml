@@ -11,6 +11,8 @@
     <uses-feature android:name="android.hardware.gamepad" android:required="false"/>
     <!-- HR Retro uses SAF folder grants instead of broad All Files Access. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- APK installs always continue through Android's user-confirmed installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REORDER_TASKS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 6-12 -->
@@ -24,6 +26,7 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
         <package android:name="org.dolphinemu.dolphinemu" />
+        <package android:name="org.azahar_emu.azahar" />
         <package android:name="xyz.aethersx2.android" />
     </queries>
     <application
@@ -52,6 +55,10 @@
             android:exported="false"
             android:theme="@android:style/Theme.Material.NoActionBar"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode" />
+        <provider android:name="com.retroarch.browser.retroactivity.HRApkFileProvider"
+            android:authorities="${applicationId}.hr-apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
         <receiver android:name="com.retroarch.browser.retroactivity.HRReturnToLibraryReceiver"
             android:exported="false" />
         <activity android:name="com.retroarch.browser.retroactivity.RetroActivityFuture" android:exported="true" android:process=":retroarch" android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" android:launchMode="singleInstance">

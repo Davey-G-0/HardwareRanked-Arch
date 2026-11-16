@@ -9,6 +9,7 @@ package com.retroarch.browser.retroactivity;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -69,6 +70,7 @@ public final class HRLibraryActivity extends Activity {
     private static final int PICK_ARTWORK = 7412;
     private static final int REQUEST_HOME_ROLE = 7413;
     private static final int PICK_LOGO = 7414;
+    private static final int PICK_EMULATOR_APK = 7415;
 
     private static final class Game {
         final String system;
@@ -100,7 +102,10 @@ public final class HRLibraryActivity extends Activity {
     private final List<TextView> tabViews = new ArrayList<>();
     private final Map<String, File> boxArtCache = new HashMap<>();
     private final AtomicBoolean installing = new AtomicBoolean(false);
+    private final AtomicBoolean downloadingApk = new AtomicBoolean(false);
     private final AtomicBoolean scrapingArt = new AtomicBoolean(false);
+    private AtomicBoolean apkReviewCancel;
+    private ProgressDialog apkReviewDialog;
     private SharedPreferences prefs;
     private File playlistDir;
     private File thumbnailDir;
@@ -759,7 +764,7 @@ public final class HRLibraryActivity extends Activity {
         if (!missing.isEmpty())
             dialog.setPositiveButton("Install cores", (d, w) -> installCores(missing));
         if (!guides.isEmpty())
-            dialog.setNeutralButton("System guides", (d, w) -> showSystemGuidePicker());
+            dialog.setNeutralButton("Emulator apps", (d, w) -> showExternalEmulatorSetup());
         dialog.setNegativeButton("Later", null).show();
     }
 
@@ -774,6 +779,306 @@ public final class HRLibraryActivity extends Activity {
                 String system = guides.get(which);
                 showAdvancedSystemOptions(new Game(system, "", ""));
             }).setNegativeButton("Back", null).show();
+    }
+
+    private boolean isEmulatorInstalled(HRExternalEmulatorCatalog.Entry entry) {
+        return isPackageInstalled(entry.packageName);
+    }
+
+    private boolean isPackageInstalled(String packageName) {
+        try {
+            getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException ex) {
+            return false;
+        }
+    }
+
+    private void showExternalEmulatorSetup() {
+        final List<HRExternalEmulatorCatalog.Entry> entries =
+            HRExternalEmulatorCatalog.forSystems(systems);
+        if (entries.isEmpty()) {
+            showSystemGuidePicker();
+            return;
+        }
+        final String[] labels = new String[entries.size()];
+        for (int i = 0; i < entries.size(); i++) {
+            HRExternalEmulatorCatalog.Entry entry = entries.get(i);
+            labels[i] = entry.name + (isEmulatorInstalled(entry) ? " · installed" : " · setup needed");
+        }
+        String storedUri = prefs.getString("pending_emulator_apk_uri", null);
+        String storedPackage = prefs.getString("pending_emulator_apk_package", null);
+        String storedHash = prefs.getString("pending_emulator_apk_sha256", null);
+        final boolean storedOfficial = prefs.getBoolean("pending_emulator_apk_official", false);
+        if (HRExternalEmulatorCatalog.forPackage(storedPackage) != null && isPackageInstalled(storedPackage)) {
+            prefs.edit().remove("pending_emulator_apk_uri").remove("pending_emulator_apk_package")
+                .remove("pending_emulator_apk_sha256").remove("pending_emulator_apk_official").apply();
+            storedUri = null;
+        } else if (!HRExternalEmulatorCatalog.isValidPendingReview(storedUri, storedPackage)
+                || storedHash == null || !storedHash.matches("[0-9a-f]{64}")
+                || !isStoredApkAvailable(storedUri, storedPackage, storedHash)) {
+            prefs.edit().remove("pending_emulator_apk_uri").remove("pending_emulator_apk_package")
+                .remove("pending_emulator_apk_sha256").remove("pending_emulator_apk_official").apply();
+            storedUri = null;
+        }
+        final String pendingUri = storedUri;
+        final String pendingHash = storedHash;
+        new AlertDialog.Builder(this).setTitle("Emulator app setup")
+            .setMessage("Detected systems use these separate apps. Choose an app to see its official source and installation options. APKs selected from storage are inspected first; Android will ask you to approve any installation.")
+            .setItems(labels, (d, which) -> showExternalEmulator(entryAt(entries, which)))
+            .setNeutralButton(pendingUri == null ? "Choose APK from SD" : "Resume APK review",
+                (d, w) -> {
+                    if (pendingUri == null) chooseEmulatorApk();
+                    else reviewEmulatorApk(Uri.parse(pendingUri), pendingHash, storedOfficial);
+                })
+            .setNegativeButton("Back", null).show();
+    }
+
+    private HRExternalEmulatorCatalog.Entry entryAt(
+            List<HRExternalEmulatorCatalog.Entry> entries, int index) {
+        return index >= 0 && index < entries.size() ? entries.get(index) : null;
+    }
+
+    private boolean isStoredApkAvailable(String value, String packageName, String hash) {
+        HRExternalEmulatorCatalog.Entry entry = HRExternalEmulatorCatalog.forPackage(packageName);
+        if (entry == null) return false;
+        try {
+            File file = HRApkFileProvider.resolve(this, Uri.parse(value));
+            return file.getName().equals("hrretro-" + entry.id + "-" + hash + ".apk");
+        } catch (Exception ex) { return false; }
+    }
+
+    private void showExternalEmulator(HRExternalEmulatorCatalog.Entry entry) {
+        if (entry == null) return;
+        boolean installed = isEmulatorInstalled(entry);
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle(entry.name + (installed ? " · installed" : " · not installed"))
+            .setMessage("Systems: " + systemNames(entry.systems)
+                + "\n\nOfficial source: " + entry.sourceUrl
+                + "\n\nUse the official project source or select an APK from your SD card for package/version/hash review. Android's own installer still requires your confirmation.");
+        if (installed) dialog.setPositiveButton("Open " + entry.name,
+                (d, w) -> {
+                    Intent launch = getPackageManager().getLaunchIntentForPackage(entry.packageName);
+                    if (launch != null) startActivity(launch);
+                });
+        else if ("azahar".equals(entry.id))
+            dialog.setPositiveButton("Download official APK", (d, w) -> downloadOfficialApk(entry));
+        else dialog.setPositiveButton("Official source", (d, w) -> openUrl(entry.sourceUrl));
+        dialog.setNeutralButton("Choose APK from SD", (d, w) -> chooseEmulatorApk())
+            .setNegativeButton("Back", null).show();
+    }
+
+    private String systemNames(List<String> names) {
+        StringBuilder result = new StringBuilder();
+        for (String name : names) {
+            if (result.length() > 0) result.append(", ");
+            result.append(HRCoreCatalog.shortSystem(name));
+        }
+        return result.toString();
+    }
+
+    private void chooseEmulatorApk() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("application/vnd.android.package-archive");
+        try {
+            startActivityForResult(pick, PICK_EMULATOR_APK);
+        } catch (Exception ex) {
+            Toast.makeText(this, "Couldn't open the SD card file picker.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void reviewEmulatorApk(Uri uri) {
+        reviewEmulatorApk(uri, null, false);
+    }
+
+    private void reviewEmulatorApk(Uri uri, String expectedDigest, boolean officialGitHubDigest) {
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        apkReviewCancel = cancelled;
+        ProgressDialog progress = new ProgressDialog(this);
+        progress.setMessage("Copying APK privately and checking package, hash, and compatibility…");
+        progress.setCancelable(false);
+        progress.setButton(ProgressDialog.BUTTON_NEGATIVE, "Cancel",
+            (dialog, which) -> cancelled.set(true));
+        progress.show();
+        apkReviewDialog = progress;
+        new Thread(() -> {
+            HRReviewedApkStore.Staged staged = null;
+            try {
+                java.io.InputStream input = getContentResolver().openInputStream(uri);
+                if (input == null) throw new java.io.IOException("Selected file couldn't be opened.");
+                File cache = new File(getCacheDir(), "hrretro-apks");
+                staged = HRReviewedApkStore.stage(input, cache, "candidate",
+                    expectedDigest, 512L * 1024 * 1024, cancelled);
+                if (cancelled.get()) throw new java.io.InterruptedIOException("APK review cancelled.");
+                android.content.pm.PackageInfo info = getPackageManager().getPackageArchiveInfo(
+                    staged.file.getAbsolutePath(), 0);
+                if (info == null || info.packageName == null)
+                    throw new java.io.IOException("This file isn't a readable Android APK.");
+                HRExternalEmulatorCatalog.Entry entry = HRExternalEmulatorCatalog.forPackage(info.packageName);
+                if (entry == null)
+                    throw new java.io.IOException("This APK package isn't in HR Retro's small emulator allowlist.");
+                String abiSummary = checkApkCompatibility(staged.file, info);
+                staged = HRReviewedApkStore.promote(staged, cache, entry.id);
+                final Uri stagedUri = HRApkFileProvider.uriFor(this, staged.file);
+                final String sha256 = staged.sha256;
+                final boolean official = officialGitHubDigest;
+                final HRExternalEmulatorCatalog.Entry approvedEntry = entry;
+                final long versionCode = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+                final String version = info.versionName == null ? "version code " + versionCode : info.versionName;
+                if (cancelled.get()) throw new java.io.InterruptedIOException("APK review cancelled.");
+                prefs.edit().putString("pending_emulator_apk_uri", stagedUri.toString())
+                    .putString("pending_emulator_apk_package", entry.packageName)
+                    .putString("pending_emulator_apk_sha256", sha256)
+                    .putBoolean("pending_emulator_apk_official", official).apply();
+                runOnUiThread(() -> {
+                    if (apkReviewDialog == progress) { progress.dismiss(); apkReviewDialog = null; }
+                    if (apkReviewCancel == cancelled) apkReviewCancel = null;
+                    if (isFinishing() || isDestroyed() || cancelled.get()) return;
+                    new AlertDialog.Builder(HRLibraryActivity.this).setTitle("Review APK before install")
+                        .setMessage("App: " + approvedEntry.name + "\nPackage: " + info.packageName
+                            + "\nVersion: " + version + "\nSHA-256: " + sha256
+                            + "\nCompatibility: " + abiSummary
+                            + (official
+                                ? "\n\nThe SHA-256 matched the official GitHub release metadata."
+                                : "\n\nThis is a private copy of the selected APK. HR Retro does not authenticate its publisher. Continue only if you got it from the official project source.")
+                            + " Android will show its own install confirmation next.")
+                        .setPositiveButton("Continue to Android installer",
+                            (d, w) -> installReviewedApk(stagedUri, approvedEntry))
+                        .setNegativeButton("Cancel", null).show();
+                });
+            } catch (Exception ex) {
+                if (staged != null && staged.file.exists()) staged.file.delete();
+                Log.w(TAG, "APK review failed", ex);
+                final String message = ex.getMessage() == null ? "Couldn't inspect that APK." : ex.getMessage();
+                runOnUiThread(() -> {
+                    if (apkReviewDialog == progress) { progress.dismiss(); apkReviewDialog = null; }
+                    if (apkReviewCancel == cancelled) apkReviewCancel = null;
+                    if (cancelled.get()) return;
+                    if (isFinishing() || isDestroyed()) return;
+                    new AlertDialog.Builder(HRLibraryActivity.this).setTitle("APK not accepted")
+                        .setMessage(message).setPositiveButton("OK", null).show();
+                });
+            }
+        }, "HRRetro-review-emulator-apk").start();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (apkReviewCancel != null) apkReviewCancel.set(true);
+        if (apkReviewDialog != null) {
+            apkReviewDialog.dismiss();
+            apkReviewDialog = null;
+        }
+        super.onDestroy();
+    }
+
+    private void downloadOfficialApk(final HRExternalEmulatorCatalog.Entry entry) {
+        if (!"azahar".equals(entry.id) || !downloadingApk.compareAndSet(false, true)) return;
+        status.setText("Checking official GitHub release and SHA-256…");
+        new Thread(() -> {
+            try {
+                final HRExternalApkDownloader.Download download =
+                    HRExternalApkDownloader.downloadLatestAzahar(getApplicationContext());
+                runOnUiThread(() -> {
+                    downloadingApk.set(false);
+                    if (isFinishing() || isDestroyed()) return;
+                    status.setText("Verified " + download.assetName);
+                    reviewEmulatorApk(Uri.fromFile(download.file), download.sha256, true);
+                });
+            } catch (Exception ex) {
+                Log.w(TAG, "Official emulator APK download failed", ex);
+                runOnUiThread(() -> {
+                    downloadingApk.set(false);
+                    if (isFinishing() || isDestroyed()) return;
+                    status.setText("Official APK download failed");
+                    new AlertDialog.Builder(HRLibraryActivity.this)
+                        .setTitle("Couldn't verify official APK")
+                        .setMessage(ex.getMessage() == null ? "The release couldn't be downloaded or verified." : ex.getMessage())
+                        .setPositiveButton("OK", null).show();
+                });
+            }
+        }, "HRRetro-download-emulator").start();
+    }
+
+    private String checkApkCompatibility(File apk, android.content.pm.PackageInfo info)
+            throws java.io.IOException {
+        if (Build.VERSION.SDK_INT >= 24 && info.applicationInfo != null
+                && info.applicationInfo.minSdkVersion > Build.VERSION.SDK_INT)
+            throw new java.io.IOException("This APK requires a newer Android version.");
+        java.util.zip.ZipFile zip = new java.util.zip.ZipFile(apk);
+        boolean hasNative = false;
+        boolean supportedAbi = false;
+        try {
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                String name = entries.nextElement().getName();
+                if (!name.startsWith("lib/")) continue;
+                String[] parts = name.split("/");
+                if (parts.length < 3) continue;
+                hasNative = true;
+                for (String abi : Build.SUPPORTED_ABIS)
+                    if (abi.equals(parts[1])) supportedAbi = true;
+            }
+        } finally { zip.close(); }
+        if (hasNative && !supportedAbi)
+            throw new java.io.IOException("This APK contains native code for a different device architecture.");
+        return hasNative ? "device architecture supported" : "no native libraries to check";
+    }
+
+    private void installReviewedApk(Uri uri, HRExternalEmulatorCatalog.Entry entry) {
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        apkReviewCancel = cancelled;
+        ProgressDialog progress = new ProgressDialog(this);
+        progress.setMessage("Rechecking the private APK copy before handing it to Android…");
+        progress.setCancelable(false);
+        progress.setButton(ProgressDialog.BUTTON_NEGATIVE, "Cancel",
+            (dialog, which) -> cancelled.set(true));
+        progress.show();
+        apkReviewDialog = progress;
+        new Thread(() -> {
+            try {
+                String pendingUri = prefs.getString("pending_emulator_apk_uri", null);
+                String pendingPackage = prefs.getString("pending_emulator_apk_package", null);
+                String pendingHash = prefs.getString("pending_emulator_apk_sha256", null);
+                if (!uri.toString().equals(pendingUri) || !entry.packageName.equals(pendingPackage)
+                        || !HRExternalEmulatorCatalog.isValidPendingReview(uri.toString(), pendingPackage)
+                        || pendingHash == null || !pendingHash.matches("[0-9a-f]{64}"))
+                    throw new IllegalArgumentException("The selected APK needs to be reviewed again.");
+                File staged = HRApkFileProvider.resolve(this, uri);
+                if (!staged.getName().equals("hrretro-" + entry.id + "-" + pendingHash + ".apk")
+                        || !pendingHash.equals(HRReviewedApkStore.sha256(staged)))
+                    throw new IllegalArgumentException("The reviewed private APK changed. Review it again.");
+                android.content.pm.PackageInfo info = getPackageManager().getPackageArchiveInfo(staged.getAbsolutePath(), 0);
+                if (info == null || !entry.packageName.equals(info.packageName))
+                    throw new IllegalArgumentException("The reviewed APK package identity changed.");
+                checkApkCompatibility(staged, info);
+                if (cancelled.get()) throw new java.io.InterruptedIOException("Install handoff cancelled.");
+                final Uri installUri = HRApkFileProvider.uriFor(this, staged);
+                runOnUiThread(() -> {
+                    if (apkReviewDialog == progress) { progress.dismiss(); apkReviewDialog = null; }
+                    if (apkReviewCancel == cancelled) apkReviewCancel = null;
+                    if (isFinishing() || isDestroyed() || cancelled.get()) return;
+                    try {
+                        Intent install = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+                        install.setDataAndType(installUri, "application/vnd.android.package-archive");
+                        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(install);
+                    } catch (Exception ex) {
+                        Toast.makeText(this, "Android couldn't open its package installer.", Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (Exception ex) {
+                final String message = ex.getMessage() == null
+                    ? "Android couldn't verify the private APK copy." : ex.getMessage();
+                runOnUiThread(() -> {
+                    if (apkReviewDialog == progress) { progress.dismiss(); apkReviewDialog = null; }
+                    if (apkReviewCancel == cancelled) apkReviewCancel = null;
+                    if (isFinishing() || isDestroyed() || cancelled.get()) return;
+                    new AlertDialog.Builder(this).setTitle("Review required")
+                        .setMessage(message).setPositiveButton("OK", null).show();
+                });
+            }
+        }, "HRRetro-verify-emulator-apk").start();
     }
 
     private void installCores(final List<HRCoreCatalog.Core> cores) {
@@ -864,6 +1169,10 @@ public final class HRLibraryActivity extends Activity {
         final boolean dolphin = "Nintendo - GameCube".equals(system)
                 || "Nintendo - Wii".equals(system);
         final boolean ps2 = "Sony - PlayStation 2".equals(system);
+        if (ps2) {
+            showPs2Setup();
+            return;
+        }
         if (threeDs) {
             final String packageName = "org.azahar_emu.azahar";
             final Intent installed = getPackageManager().getLaunchIntentForPackage(packageName);
@@ -929,6 +1238,16 @@ public final class HRLibraryActivity extends Activity {
             .show();
     }
 
+    private void showPs2Setup() {
+        final Intent installed = getPackageManager().getLaunchIntentForPackage("xyz.aethersx2.android");
+        new AlertDialog.Builder(this).setTitle("PS2 setup: BIOS required")
+            .setMessage(HRRetroGuides.ps2(installed != null))
+            .setPositiveButton(installed != null ? "Open PS2 app" : "Got it",
+                (d, w) -> { if (installed != null) startActivity(installed); })
+            .setNeutralButton("BIOS & firmware guide", (d, w) -> showBiosGuide())
+            .setNegativeButton("Back", null).show();
+    }
+
     private void openUrl(String url) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
@@ -949,10 +1268,7 @@ public final class HRLibraryActivity extends Activity {
         if ("Nintendo - Nintendo DS".equals(system)) {
             new AlertDialog.Builder(this)
                 .setTitle("Nintendo DS controls")
-                .setMessage("While playing, press START + SELECT together to open the in-game menu. " +
-                    "Select Quick Menu → Core Options to adjust the DS screen layout. " +
-                    "For fast-forward, open Settings → Input → Hotkeys and bind a spare button to Fast-Forward (Hold). " +
-                    "These controls are still manual in this test build.")
+                .setMessage(HRRetroGuides.CONTROLS + " Select Quick Menu → Core Options to adjust the DS screen layout.")
                 .setPositiveButton("OK", null).show();
         } else if ("Sega - Dreamcast".equals(system)) {
             new AlertDialog.Builder(this)
@@ -967,8 +1283,7 @@ public final class HRLibraryActivity extends Activity {
         } else {
             new AlertDialog.Builder(this)
                 .setTitle("Game controls")
-                .setMessage("Press START + SELECT together during gameplay to show RetroArch's in-game menu. " +
-                    "Long-press a game for context-sensitive help. Return from Advanced by exiting RetroArch.")
+                .setMessage(HRRetroGuides.CONTROLS + " Long-press a game for context-sensitive help.")
                 .setPositiveButton("OK", null).show();
         }
     }
@@ -1003,6 +1318,8 @@ public final class HRLibraryActivity extends Activity {
             "Scrape box art now",
             "Customize system artwork",
             "Controls",
+            "BIOS & firmware setup",
+            "Controller shortcuts & save states",
             "Use HR Retro as Android Home",
             "Advanced RetroArch settings"
         };
@@ -1012,9 +1329,27 @@ public final class HRLibraryActivity extends Activity {
                 if (which == 0) scrapeExistingBoxArt();
                 else if (which == 1) showArtworkOptions();
                 else if (which == 2) showControlsOptions();
-                else if (which == 3) requestHomeRole();
+                else if (which == 3) showBiosGuide();
+                else if (which == 4) showControllerGuide();
+                else if (which == 5) requestHomeRole();
                 else openRetroArch(null, null);
             }).show();
+    }
+
+    private void showBiosGuide() {
+        new AlertDialog.Builder(this).setTitle("BIOS & firmware setup")
+            .setMessage(HRRetroGuides.BIOS)
+            .setPositiveButton("Open RetroArch settings",
+                (d, w) -> openRetroArch(null, null))
+            .setNegativeButton("Later", null).show();
+    }
+
+    private void showControllerGuide() {
+        new AlertDialog.Builder(this).setTitle("In-game menu & controller shortcuts")
+            .setMessage(HRRetroGuides.CONTROLS)
+            .setPositiveButton("Open RetroArch settings",
+                (d, w) -> openRetroArch(null, null))
+            .setNegativeButton("Back", null).show();
     }
 
     private void showArtworkOptions() {
@@ -1200,6 +1535,11 @@ public final class HRLibraryActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_EMULATOR_APK && resultCode == RESULT_OK && data != null
+                && data.getData() != null) {
+            reviewEmulatorApk(data.getData());
+            return;
+        }
         if ((requestCode == PICK_ARTWORK || requestCode == PICK_LOGO) &&
                 resultCode == RESULT_OK && data != null &&
                 data.getData() != null) {
