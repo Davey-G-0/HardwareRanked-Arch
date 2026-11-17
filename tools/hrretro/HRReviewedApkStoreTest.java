@@ -59,9 +59,28 @@ public final class HRReviewedApkStoreTest {
         ok("Cancelled copy stops", cancelledRejected);
         ok("Cancelled copy leaves no partial file", count(root, ".part") == 0);
 
+        AtomicBoolean cancelledAtEof = new AtomicBoolean(false);
+        boolean eofRejected = false;
+        try {
+            HRReviewedApkStore.stage(new ByteArrayInputStream(new byte[0]) {
+                @Override public int read(byte[] bytes, int offset, int length) {
+                    cancelledAtEof.set(true);
+                    return -1;
+                }
+            }, root, "candidate", null, 1024, cancelledAtEof);
+        } catch (java.io.InterruptedIOException expected) { eofRejected = true; }
+        ok("Cancellation at EOF cannot publish a staged copy", eofRejected);
+        ok("EOF cancellation leaves no partial copy", count(root, ".part") == 0);
+
         byte[] release = "same reviewed apk bytes".getBytes(StandardCharsets.UTF_8);
         HRReviewedApkStore.Staged candidate = HRReviewedApkStore.stage(
             new ByteArrayInputStream(release), root, "candidate", null, 1024);
+        HRReviewedApkStore.Staged concurrent = HRReviewedApkStore.stage(
+            new ByteArrayInputStream(release), root, "candidate", null, 1024);
+        ok("Concurrent identical reviews own separate candidates",
+            !candidate.file.getCanonicalPath().equals(concurrent.file.getCanonicalPath()));
+        concurrent.file.delete();
+        ok("Cancelling one candidate preserves the other", candidate.file.isFile());
         HRReviewedApkStore.Staged promoted = HRReviewedApkStore.promote(candidate, root, "azahar");
         HRReviewedApkStore.Staged duplicate = HRReviewedApkStore.stage(
             new ByteArrayInputStream(release), root, "candidate", null, 1024);
@@ -71,6 +90,10 @@ public final class HRReviewedApkStoreTest {
         ok("Duplicate promotion reuses exact staged copy", promoted.file.getCanonicalPath().equals(
             deduplicated.file.getCanonicalPath()));
         ok("Duplicate candidate is removed", !duplicate.file.exists());
+
+        HRReviewedApkStore.Staged again = HRReviewedApkStore.promote(promoted, root, "azahar");
+        ok("Repeated promotion preserves the reviewed file", again.file.isFile());
+        ok("Repeated promotion preserves integrity", again.sha256.equals(HRReviewedApkStore.sha256(again.file)));
 
         boolean traversalPromotionRejected = false;
         try { HRReviewedApkStore.promote(promoted, root, "../escape"); }

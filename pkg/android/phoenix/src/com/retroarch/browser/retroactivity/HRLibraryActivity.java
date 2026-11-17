@@ -102,7 +102,6 @@ public final class HRLibraryActivity extends Activity {
     private final List<TextView> tabViews = new ArrayList<>();
     private final Map<String, File> boxArtCache = new HashMap<>();
     private final AtomicBoolean installing = new AtomicBoolean(false);
-    private final AtomicBoolean downloadingApk = new AtomicBoolean(false);
     private final AtomicBoolean scrapingArt = new AtomicBoolean(false);
     private AtomicBoolean apkReviewCancel;
     private ProgressDialog apkReviewDialog;
@@ -810,11 +809,7 @@ public final class HRLibraryActivity extends Activity {
         String storedPackage = prefs.getString("pending_emulator_apk_package", null);
         String storedHash = prefs.getString("pending_emulator_apk_sha256", null);
         final boolean storedOfficial = prefs.getBoolean("pending_emulator_apk_official", false);
-        if (HRExternalEmulatorCatalog.forPackage(storedPackage) != null && isPackageInstalled(storedPackage)) {
-            prefs.edit().remove("pending_emulator_apk_uri").remove("pending_emulator_apk_package")
-                .remove("pending_emulator_apk_sha256").remove("pending_emulator_apk_official").apply();
-            storedUri = null;
-        } else if (!HRExternalEmulatorCatalog.isValidPendingReview(storedUri, storedPackage)
+        if (!HRExternalEmulatorCatalog.isValidPendingReview(storedUri, storedPackage)
                 || storedHash == null || !storedHash.matches("[0-9a-f]{64}")
                 || !isStoredApkAvailable(storedUri, storedPackage, storedHash)) {
             prefs.edit().remove("pending_emulator_apk_uri").remove("pending_emulator_apk_package")
@@ -824,7 +819,6 @@ public final class HRLibraryActivity extends Activity {
         final String pendingUri = storedUri;
         final String pendingHash = storedHash;
         new AlertDialog.Builder(this).setTitle("Emulator app setup")
-            .setMessage("Detected systems use these separate apps. Choose an app to see its official source and installation options. APKs selected from storage are inspected first; Android will ask you to approve any installation.")
             .setItems(labels, (d, which) -> showExternalEmulator(entryAt(entries, which)))
             .setNeutralButton(pendingUri == null ? "Choose APK from SD" : "Resume APK review",
                 (d, w) -> {
@@ -877,6 +871,7 @@ public final class HRLibraryActivity extends Activity {
     }
 
     private void chooseEmulatorApk() {
+        cancelApkOperation();
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
         pick.setType("application/vnd.android.package-archive");
@@ -891,7 +886,20 @@ public final class HRLibraryActivity extends Activity {
         reviewEmulatorApk(uri, null, false);
     }
 
+    private void cancelApkOperation() {
+        if (apkReviewCancel != null) apkReviewCancel.set(true);
+        if (apkReviewDialog != null) apkReviewDialog.dismiss();
+        apkReviewCancel = null;
+        apkReviewDialog = null;
+    }
+
     private void reviewEmulatorApk(Uri uri, String expectedDigest, boolean officialGitHubDigest) {
+        reviewEmulatorApk(uri, expectedDigest, officialGitHubDigest, null);
+    }
+
+    private void reviewEmulatorApk(Uri uri, String expectedDigest, boolean officialGitHubDigest,
+            File downloadedSource) {
+        cancelApkOperation();
         final AtomicBoolean cancelled = new AtomicBoolean(false);
         apkReviewCancel = cancelled;
         ProgressDialog progress = new ProgressDialog(this);
@@ -903,6 +911,7 @@ public final class HRLibraryActivity extends Activity {
         apkReviewDialog = progress;
         new Thread(() -> {
             HRReviewedApkStore.Staged staged = null;
+            boolean promoted = false;
             try {
                 java.io.InputStream input = getContentResolver().openInputStream(uri);
                 if (input == null) throw new java.io.IOException("Selected file couldn't be opened.");
@@ -919,6 +928,7 @@ public final class HRLibraryActivity extends Activity {
                     throw new java.io.IOException("This APK package isn't in HR Retro's small emulator allowlist.");
                 String abiSummary = checkApkCompatibility(staged.file, info);
                 staged = HRReviewedApkStore.promote(staged, cache, entry.id);
+                promoted = true;
                 final Uri stagedUri = HRApkFileProvider.uriFor(this, staged.file);
                 final String sha256 = staged.sha256;
                 final boolean official = officialGitHubDigest;
@@ -926,14 +936,14 @@ public final class HRLibraryActivity extends Activity {
                 final long versionCode = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
                 final String version = info.versionName == null ? "version code " + versionCode : info.versionName;
                 if (cancelled.get()) throw new java.io.InterruptedIOException("APK review cancelled.");
-                prefs.edit().putString("pending_emulator_apk_uri", stagedUri.toString())
-                    .putString("pending_emulator_apk_package", entry.packageName)
-                    .putString("pending_emulator_apk_sha256", sha256)
-                    .putBoolean("pending_emulator_apk_official", official).apply();
                 runOnUiThread(() -> {
                     if (apkReviewDialog == progress) { progress.dismiss(); apkReviewDialog = null; }
                     if (apkReviewCancel == cancelled) apkReviewCancel = null;
                     if (isFinishing() || isDestroyed() || cancelled.get()) return;
+                    prefs.edit().putString("pending_emulator_apk_uri", stagedUri.toString())
+                        .putString("pending_emulator_apk_package", entry.packageName)
+                        .putString("pending_emulator_apk_sha256", sha256)
+                        .putBoolean("pending_emulator_apk_official", official).apply();
                     new AlertDialog.Builder(HRLibraryActivity.this).setTitle("Review APK before install")
                         .setMessage("App: " + approvedEntry.name + "\nPackage: " + info.packageName
                             + "\nVersion: " + version + "\nSHA-256: " + sha256
@@ -947,7 +957,7 @@ public final class HRLibraryActivity extends Activity {
                         .setNegativeButton("Cancel", null).show();
                 });
             } catch (Exception ex) {
-                if (staged != null && staged.file.exists()) staged.file.delete();
+                if (!promoted && staged != null && staged.file.exists()) staged.file.delete();
                 Log.w(TAG, "APK review failed", ex);
                 final String message = ex.getMessage() == null ? "Couldn't inspect that APK." : ex.getMessage();
                 runOnUiThread(() -> {
@@ -958,38 +968,45 @@ public final class HRLibraryActivity extends Activity {
                     new AlertDialog.Builder(HRLibraryActivity.this).setTitle("APK not accepted")
                         .setMessage(message).setPositiveButton("OK", null).show();
                 });
-            }
+            } finally { if (downloadedSource != null) downloadedSource.delete(); }
         }, "HRRetro-review-emulator-apk").start();
     }
 
     @Override
     protected void onDestroy() {
-        if (apkReviewCancel != null) apkReviewCancel.set(true);
-        if (apkReviewDialog != null) {
-            apkReviewDialog.dismiss();
-            apkReviewDialog = null;
-        }
+        cancelApkOperation();
         super.onDestroy();
     }
 
     private void downloadOfficialApk(final HRExternalEmulatorCatalog.Entry entry) {
-        if (!"azahar".equals(entry.id) || !downloadingApk.compareAndSet(false, true)) return;
-        status.setText("Checking official GitHub release and SHA-256…");
+        if (!"azahar".equals(entry.id)) return;
+        cancelApkOperation();
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        apkReviewCancel = cancelled;
+        ProgressDialog progress = new ProgressDialog(this);
+        progress.setMessage("Downloading official APK and checking SHA-256…");
+        progress.setCancelable(false);
+        progress.setButton(ProgressDialog.BUTTON_NEGATIVE, "Cancel",
+            (dialog, which) -> cancelled.set(true));
+        progress.show();
+        apkReviewDialog = progress;
         new Thread(() -> {
             try {
                 final HRExternalApkDownloader.Download download =
-                    HRExternalApkDownloader.downloadLatestAzahar(getApplicationContext());
+                    HRExternalApkDownloader.downloadLatestAzahar(getApplicationContext(), cancelled);
                 runOnUiThread(() -> {
-                    downloadingApk.set(false);
-                    if (isFinishing() || isDestroyed()) return;
+                    if (apkReviewDialog == progress) { progress.dismiss(); apkReviewDialog = null; }
+                    if (apkReviewCancel == cancelled) apkReviewCancel = null;
+                    if (isFinishing() || isDestroyed() || cancelled.get()) { download.file.delete(); return; }
                     status.setText("Verified " + download.assetName);
-                    reviewEmulatorApk(Uri.fromFile(download.file), download.sha256, true);
+                    reviewEmulatorApk(Uri.fromFile(download.file), download.sha256, true, download.file);
                 });
             } catch (Exception ex) {
                 Log.w(TAG, "Official emulator APK download failed", ex);
                 runOnUiThread(() -> {
-                    downloadingApk.set(false);
-                    if (isFinishing() || isDestroyed()) return;
+                    if (apkReviewDialog == progress) { progress.dismiss(); apkReviewDialog = null; }
+                    if (apkReviewCancel == cancelled) apkReviewCancel = null;
+                    if (isFinishing() || isDestroyed() || cancelled.get()) return;
                     status.setText("Official APK download failed");
                     new AlertDialog.Builder(HRLibraryActivity.this)
                         .setTitle("Couldn't verify official APK")
@@ -1002,7 +1019,17 @@ public final class HRLibraryActivity extends Activity {
 
     private String checkApkCompatibility(File apk, android.content.pm.PackageInfo info)
             throws java.io.IOException {
-        if (Build.VERSION.SDK_INT >= 24 && info.applicationInfo != null
+        if (info.applicationInfo == null)
+            throw new java.io.IOException("This APK has no readable application metadata.");
+        long version = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+        try {
+            android.content.pm.PackageInfo installed = getPackageManager().getPackageInfo(info.packageName, 0);
+            long installedVersion = Build.VERSION.SDK_INT >= 28
+                ? installed.getLongVersionCode() : installed.versionCode;
+            if (version < installedVersion)
+                throw new java.io.IOException("This APK is older than the installed version.");
+        } catch (PackageManager.NameNotFoundException expected) { }
+        if (Build.VERSION.SDK_INT >= 24
                 && info.applicationInfo.minSdkVersion > Build.VERSION.SDK_INT)
             throw new java.io.IOException("This APK requires a newer Android version.");
         java.util.zip.ZipFile zip = new java.util.zip.ZipFile(apk);
@@ -1011,10 +1038,11 @@ public final class HRLibraryActivity extends Activity {
         try {
             java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zip.entries();
             while (entries.hasMoreElements()) {
-                String name = entries.nextElement().getName();
-                if (!name.startsWith("lib/")) continue;
+                java.util.zip.ZipEntry item = entries.nextElement();
+                String name = item.getName();
+                if (item.isDirectory() || !name.startsWith("lib/") || !name.endsWith(".so")) continue;
                 String[] parts = name.split("/");
-                if (parts.length < 3) continue;
+                if (parts.length != 3) continue;
                 hasNative = true;
                 for (String abi : Build.SUPPORTED_ABIS)
                     if (abi.equals(parts[1])) supportedAbi = true;
@@ -1022,10 +1050,26 @@ public final class HRLibraryActivity extends Activity {
         } finally { zip.close(); }
         if (hasNative && !supportedAbi)
             throw new java.io.IOException("This APK contains native code for a different device architecture.");
-        return hasNative ? "device architecture supported" : "no native libraries to check";
+        return (hasNative ? "device architecture supported" : "no native libraries to check")
+            + (Build.VERSION.SDK_INT >= 24 ? "; minimum Android API " + info.applicationInfo.minSdkVersion
+                : "; Android installer must check minimum SDK");
     }
 
     private void installReviewedApk(Uri uri, HRExternalEmulatorCatalog.Entry entry) {
+        cancelApkOperation();
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            new AlertDialog.Builder(this).setTitle("Allow Android installation")
+                .setMessage("Enable Allow from this source for HR Retro in Android settings, then return to Emulator app setup and resume APK review. Android will still ask you to approve the install.")
+                .setPositiveButton("Open Android settings", (d, w) -> {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + getPackageName())));
+                    } catch (Exception ex) {
+                        Toast.makeText(this, "Open Android settings to allow installs from HR Retro.", Toast.LENGTH_LONG).show();
+                    }
+                }).setNegativeButton("Cancel", null).show();
+            return;
+        }
         final AtomicBoolean cancelled = new AtomicBoolean(false);
         apkReviewCancel = cancelled;
         ProgressDialog progress = new ProgressDialog(this);

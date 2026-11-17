@@ -46,10 +46,13 @@ final class HRReviewedApkStore {
                 }
                 out.getFD().sync();
             }
+            if (cancelled != null && cancelled.get())
+                throw new java.io.InterruptedIOException("APK review cancelled.");
             String hash = hex(digest.digest());
             if (expectedSha256 != null && !hash.equalsIgnoreCase(expectedSha256))
                 throw new IOException("APK changed after its official digest was checked.");
-            File finalFile = new File(cacheDirectory, "hrretro-" + id + "-" + hash + ".apk");
+            File finalFile = new File(cacheDirectory, "candidate".equals(id)
+                ? temporary.getName() + ".apk" : "hrretro-" + id + "-" + hash + ".apk");
             if (finalFile.exists()) {
                 if (!hash.equals(sha256(finalFile)))
                     throw new IOException("Existing private review copy failed integrity validation.");
@@ -76,7 +79,8 @@ final class HRReviewedApkStore {
             if (!candidate.sha256.equals(sha256(finalFile)))
                 throw new IOException("Existing private review copy failed integrity validation.");
             if (!finalFile.setReadOnly()) throw new IOException("Couldn't make reviewed APK read-only.");
-            candidate.file.delete();
+            if (!candidate.file.getCanonicalFile().equals(finalFile.getCanonicalFile()))
+                candidate.file.delete();
         } else if (!candidate.file.renameTo(finalFile)) {
             throw new IOException("Couldn't finalize reviewed APK.");
         } else if (!finalFile.setReadOnly()) {
