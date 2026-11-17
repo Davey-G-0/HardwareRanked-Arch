@@ -110,9 +110,82 @@ public final class HRReviewedApkStoreTest {
         ok("Corrupt existing content-addressed copy is rejected", corruptRejected);
         ok("Corrupt existing file isn't mistaken for a verified review copy",
             !goodHash.equals(HRReviewedApkStore.sha256(corrupt)));
+        testInterruptedReviewRecovery(root);
         deleteTree(root);
         System.out.println("HR Retro reviewed APK store: " + checks + " checks passed");
     }
+    private static void testInterruptedReviewRecovery(File root) throws Exception {
+        File cache = new File(root, "recovery");
+        byte[] release = "harmless review recovery fixture".getBytes(StandardCharsets.UTF_8);
+        HRReviewedApkStore.Staged original = HRReviewedApkStore.stage(
+            new ByteArrayInputStream(release), cache, "azahar", null, 1024);
+        String savedPath = original.file.getAbsolutePath();
+        String savedHash = original.sha256;
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        AtomicBoolean closed = new AtomicBoolean(false);
+        boolean cancellationRejected = false;
+        try {
+            HRReviewedApkStore.stage(new java.io.InputStream() {
+                private int reads;
+                @Override public int read() { throw new AssertionError("Expected bulk read"); }
+                @Override public int read(byte[] buffer, int offset, int length) {
+                    if (++reads == 2) cancelled.set(true);
+                    buffer[offset] = 42;
+                    return 1;
+                }
+                @Override public void close() { closed.set(true); }
+            }, cache, "candidate", null, 1024, cancelled);
+        } catch (java.io.InterruptedIOException expected) { cancellationRejected = true; }
+        ok("Mid-copy cancellation is rejected", cancellationRejected);
+        ok("Cancelled source is closed", closed.get());
+        ok("Cancelled replacement preserves pending bytes",
+            savedHash.equals(HRReviewedApkStore.sha256(new File(savedPath))));
+        ok("Cancelled replacement leaves only the pending APK", cache.list().length == 1);
+
+        closed.set(false);
+        boolean interruptedRejected = false;
+        try {
+            HRReviewedApkStore.stage(new java.io.InputStream() {
+                private boolean first = true;
+                @Override public int read() { throw new AssertionError("Expected bulk read"); }
+                @Override public int read(byte[] buffer, int offset, int length) throws java.io.IOException {
+                    if (!first) throw new java.io.IOException("Fixture source disconnected");
+                    first = false;
+                    buffer[offset] = 42;
+                    return 1;
+                }
+                @Override public void close() { closed.set(true); }
+            }, cache, "candidate", null, 1024);
+        } catch (java.io.IOException expected) { interruptedRejected = true; }
+        ok("Disconnected source is rejected", interruptedRejected);
+        ok("Disconnected source is closed", closed.get());
+        ok("Disconnected copy leaves only the pending APK", cache.list().length == 1);
+
+        HRReviewedApkStore.Staged resumedCandidate = HRReviewedApkStore.stage(
+            new java.io.FileInputStream(new File(savedPath)), cache, "candidate", savedHash, 1024);
+        HRReviewedApkStore.Staged resumed = HRReviewedApkStore.promote(resumedCandidate, cache, "azahar");
+        ok("Review resumes from saved path and digest", resumed.file.getAbsolutePath().equals(savedPath));
+        ok("Resumed review preserves the approved digest", savedHash.equals(resumed.sha256));
+        ok("Resume removes its transient candidate", cache.list().length == 1);
+
+        if (!resumed.file.setWritable(true)) throw new AssertionError("Couldn't alter test fixture");
+        write(resumed.file, "changed fixture bytes");
+        boolean changedRejected = false;
+        try {
+            HRReviewedApkStore.stage(new java.io.FileInputStream(new File(savedPath)),
+                cache, "candidate", savedHash, 1024);
+        } catch (java.io.IOException expected) { changedRejected = true; }
+        ok("Changed cached bytes cannot resume with saved digest", changedRejected);
+        ok("Failed resume leaves no new candidate", cache.list().length == 1);
+        if (!resumed.file.delete()) throw new AssertionError("Couldn't delete test fixture");
+        boolean missingRejected = false;
+        try {
+            HRReviewedApkStore.promote(resumed, cache, "azahar");
+        } catch (java.io.IOException expected) { missingRejected = true; }
+        ok("Evicted cached bytes cannot be promoted", missingRejected);
+    }
+
     private static void write(File file, String value) throws Exception {
         try (FileOutputStream out = new FileOutputStream(file)) {
             out.write(value.getBytes(StandardCharsets.UTF_8));
